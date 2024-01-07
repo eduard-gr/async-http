@@ -18,19 +18,6 @@ class Client
 	 */
 	private Socket|null $socket = null;
 
-	private int $select_timeout;
-	private int $read_timeout;
-
-	/**
-	 * @param RequestInterface $request
-	 * @return resource
-	 */
-	private function getStream(
-		RequestInterface $request
-	){
-
-	}
-
 	/**
 	 * @param RequestInterface $request
 	 * @return void
