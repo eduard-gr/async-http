@@ -1,0 +1,9 @@
+<phpunit bootstrap="vendor/autoload.php">
+    <testsuites>
+        <testsuite name="AsyncHttp">
+            <directory>test</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+    </php>
+</phpunit>
