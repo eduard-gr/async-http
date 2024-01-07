@@ -18,6 +18,11 @@ class Client
 	 */
 	private Socket|null $socket = null;
 
+	public function __destruct()
+	{
+		$this->socket = null;
+	}
+
 	/**
 	 * @param RequestInterface $request
 	 * @return void
