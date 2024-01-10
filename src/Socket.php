@@ -166,7 +166,8 @@ class Socket
 			if(time() > $timeout){
 				throw NetworkException::socketSelectTimeout();
 			}
-			//Fiber::suspend();
+
+			Fiber::suspend();
 		}while(true);
 	}
 
@@ -204,7 +205,7 @@ class Socket
 			}
 
 			//TODO: Check select timeout
-			//Fiber::suspend();
+			Fiber::suspend();
 		}while(true);
 	}
 
@@ -268,7 +269,7 @@ class Socket
 					throw NetworkException::readTimeout();
 				}
 
-				//Fiber::suspend();
+				Fiber::suspend();
 				usleep($this->read_usleep);
 				continue;
 			}
@@ -326,7 +327,7 @@ class Socket
 					throw NetworkException::readTimeout();
 				}
 
-				//Fiber::suspend();
+				Fiber::suspend();
 				usleep($this->read_usleep);
 				continue;
 			}
