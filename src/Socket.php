@@ -216,12 +216,15 @@ class Socket
 		string $payload
 	):void
 	{
-		var_dump($this->read_buffer);
 		$this->isReadyToWrite();
 
 		$fwrite = fwrite($this->socket, $payload);
 
-		if($fwrite === false || $fwrite != strlen($payload)){
+        if($fwrite === false){
+            throw NetworkException::failedToSend();
+        }
+
+		if($fwrite != strlen($payload)){
 			throw NetworkException::writeSizeException();
 		}
 	}

@@ -56,7 +56,10 @@ class RequestTest extends Bootstrap
 
 		//$client = new GuzzleClient();
 		$client = new AsyncHttp();
-		$client->send($request);
+		$response = $client->send($request);
+
+        var_dump(json_decode($response->getBody(), true));
+        //$response->getBody()->getContents();
 	}
 
 }

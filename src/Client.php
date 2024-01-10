@@ -59,6 +59,7 @@ class Client
 			$code,
 			$header->getArray(),
 			$body,
+            //utf8_encode($body),
 			$version,
 			$status);
 	}
@@ -98,6 +99,21 @@ class Client
 		return new Header($headers);
 	}
 
+    private function getSingleBodyEncodedBySize(
+        Socket $socket,
+        int $size
+    ):string
+    {
+        /**
+         * Add 2 \r\n
+         */
+        //TODO Need to check documentation
+//        $message = $socket->readSpecificSize($size + 2);
+//        return substr($message, 0, -2);
+
+        return $socket->readSpecificSize($size);
+    }
+
 	private function getSingleBodyEncodedByChunks(
 		Socket $socket
 	):string
@@ -125,7 +141,8 @@ class Client
 			/**
 			 * Add 2 \r\n
 			 */
-			$body[] = $socket->readSpecificSize($size + 2);
+            $message = $socket->readSpecificSize($size + 2);
+			$body[] = substr($message, 0, -2);
 		}while(true);
 
 		return implode('', $body);
@@ -138,7 +155,9 @@ class Client
 	{
 		$length = $header->getContentLength();
 		if($length !== null){
-			return $socket->readSpecificSize($length);
+			return $this->getSingleBodyEncodedBySize(
+                $socket,
+                $length);
 		}
 
 		if(strcasecmp($header->getTransferEncoding(), 'Chunked') == 0){
@@ -160,7 +179,11 @@ class Client
 		$uri = $request->getUri();
 
 		$body = strval($request->getBody());
-		$path = [$uri->getPath()];
+		$path = [
+            empty($uri->getPath())
+                ? '/'
+                : $uri->getPath()
+        ];
 
 		if(empty($uri->getQuery()) === false){
 			$path[] = $uri->getQuery();
