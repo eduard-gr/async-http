@@ -16,9 +16,19 @@ class Client
 	/**
 	 * @var resource
 	 */
-	private Socket|null $socket = null;
+	private ?Socket $socket = null;
 
-	public function __destruct()
+    private ?string $ip;
+
+    /**
+     * @param string|null $ip IP address from which the connection will be made
+     */
+    public function __construct(string $ip = null)
+    {
+        $this->ip = $ip;
+    }
+
+    public function __destruct()
 	{
 		$this->socket = null;
 	}
@@ -35,7 +45,8 @@ class Client
 
 		if($this->socket == null){
 			$this->socket = new Socket(
-				$request->getUri());
+				$request->getUri(),
+                $this->ip);
 		}
 
 		$this->socket->send(

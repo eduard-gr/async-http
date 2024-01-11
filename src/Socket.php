@@ -21,6 +21,11 @@ class Socket
 	private bool $is_ready_to_read = false;
 	private bool $is_ready_to_write = false;
 
+    /**
+     * @var string|null IP address from which the connection will be made
+     */
+    private ?string $ip;
+
 	/**
 	 * @var int How long in microsseconds select sleep
 	 */
@@ -41,8 +46,10 @@ class Socket
 
 	private int $fread_length = 4 * 1024;
 
-	public function __construct(
+    public function __construct(
 		UriInterface $uri,
+        string $ip = null,
+
 		int $select_usleep = 200,
 		int $select_timeout = 30,
 
@@ -51,6 +58,8 @@ class Socket
 
 		int $fread_length = 4 * 1024
 	){
+
+        $this->ip = $ip;
 		$this->select_usleep = $select_usleep;
 		$this->select_timeout = $select_timeout;
 
@@ -74,11 +83,20 @@ class Socket
 		UriInterface $uri
 	):array
 	{
+        $options = [];
+
+        if(empty($this->ip) === false){
+            $options['socket'] = [
+                'bindto' => sprintf('%s:0',
+                    $this->ip)
+            ];
+        }
+
 		return [
 			sprintf('tcp://%s:%s',
 				$uri->getHost(),
 				$uri->getPort() ?? 80),
-			stream_context_create()
+			stream_context_create($options)
 		];
 	}
 
@@ -86,23 +104,32 @@ class Socket
 		UriInterface $uri
 	):array
 	{
+        $options = [
+            'ssl' => [
+                'crypto_method' => STREAM_CRYPTO_METHOD_TLS_CLIENT,
+                'capture_peer_cert' => false,
+                'capture_peer_chain' => false,
+                'capture_peer_cert_chain' => false,
+                'verify_host' => false,
+                'verify_peer' => false,
+                'verify_depth' => false,
+                'allow_self_signed' => true,
+                'disable_compression' => false
+            ]
+        ];
+
+        if(empty($this->ip) === false){
+            $options['socket'] = [
+                'bindto' => sprintf('%s:0',
+                    $this->ip)
+            ];
+        }
+
 		return [
 			sprintf('ssl://%s:%s',
 				$uri->getHost(),
 				$uri->getPort() ?? 443),
-			stream_context_create([
-				'ssl' => [
-					'crypto_method' => STREAM_CRYPTO_METHOD_TLS_CLIENT,
-					'capture_peer_cert' => false,
-					'capture_peer_chain' => false,
-					'capture_peer_cert_chain' => false,
-					'verify_host' => false,
-					'verify_peer' => false,
-					'verify_depth' => false,
-					'allow_self_signed' => true,
-					'disable_compression' => false
-				]
-			])
+			stream_context_create($options)
 		];
 	}
 
