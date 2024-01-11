@@ -304,6 +304,7 @@ class Socket
 				continue;
 			}
 
+			$timeout = time() + $this->read_timeout;
 			$this->appendBuffer($fragment);
 			$ds = $size - strlen($this->read_buffer);
 		}
@@ -362,6 +363,7 @@ class Socket
 				continue;
 			}
 
+			$timeout = time() + $this->read_timeout;
 			$this->appendBuffer($fragment);
 			$line = $this->readBufferLine();
 			if($line !== null){
