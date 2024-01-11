@@ -42,7 +42,7 @@ class Socket
 	private int $read_timeout = 30;
 
 	//TODO: Do we need sleep with fiber
-	private int $read_usleep = 100;
+	private int $read_usleep = 0;
 
 	private int $fread_length = 4 * 1024;
 
@@ -53,7 +53,7 @@ class Socket
 		int $select_usleep = 200,
 		int $select_timeout = 30,
 
-		int $read_usleep = 200,
+		int $read_usleep = 0,
 		int $read_timeout = 30,
 
 		int $fread_length = 4 * 1024
