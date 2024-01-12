@@ -33,6 +33,15 @@ class Client
 		$this->socket = null;
 	}
 
+
+    public function setIP(string $ip = null):void
+    {
+        $this->ip = $ip;
+        if($this->socket != null){
+            $this->socket = null;
+        }
+    }
+
 	/**
 	 * @param RequestInterface $request
 	 * @return void
