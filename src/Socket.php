@@ -39,7 +39,7 @@ class Socket
 	/**
 	 * @var int How long in seconds do we wait for data from the server?
 	 */
-	private int $read_timeout = 30;
+	private int $read_timeout = 120;
 
 	//TODO: Do we need sleep with fiber
 	private int $read_usleep = 0;
@@ -54,7 +54,7 @@ class Socket
 		int $select_timeout = 30,
 
 		int $read_usleep = 0,
-		int $read_timeout = 30,
+		int $read_timeout = 120,
 
 		int $fread_length = 4 * 1024
 	){
