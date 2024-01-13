@@ -29,31 +29,31 @@ class Socket
 	/**
 	 * @var int How long in microsseconds select sleep
 	 */
-	private int $select_usleep = 200;
+	private int $select_usleep = 0;
 
 	/**
-	 * @var int How long in seconds do we wait for socket ready?
+	 * @var int How long in seconds do we wait for socket select?
 	 */
-	private int $select_timeout = 30;
+	private int $select_timeout = 0;
 
 	/**
 	 * @var int How long in seconds do we wait for data from the server?
 	 */
-	private int $read_timeout = 120;
+	private int $read_timeout = 0;
 
-	//TODO: Do we need sleep with fiber
-	private int $read_usleep = 0;
-
-	private int $fread_length = 4 * 1024;
+	private int $fread_length = 0;
 
     public function __construct(
 		UriInterface $uri,
         string $ip = null,
 
-		int $select_usleep = 200,
+		//1/100 of seconds
+		int $select_usleep = 10000,
+
+		//30 seconds
 		int $select_timeout = 30,
 
-		int $read_usleep = 0,
+		//120 seconds
 		int $read_timeout = 120,
 
 		int $fread_length = 4 * 1024
@@ -63,7 +63,6 @@ class Socket
 		$this->select_usleep = $select_usleep;
 		$this->select_timeout = $select_timeout;
 
-		$this->read_usleep = $read_usleep;
 		$this->read_timeout = $read_timeout;
 
 		$this->fread_length = $fread_length;
@@ -277,7 +276,7 @@ class Socket
 		return $line;
 	}
 
-	public function readSpecificSize($size):string
+	public function readSpecificSize(int $size):string
 	{
 		$this->isReadyToRead();
 
@@ -300,7 +299,6 @@ class Socket
 				}
 
 				Fiber::suspend();
-				usleep($this->read_usleep);
 				continue;
 			}
 
@@ -359,7 +357,6 @@ class Socket
 				}
 
 				Fiber::suspend();
-				usleep($this->read_usleep);
 				continue;
 			}
 
