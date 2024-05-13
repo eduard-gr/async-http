@@ -42,6 +42,11 @@ class Client
         }
     }
 
+    public function getIP():string|null
+    {
+        return $this->ip;
+    }
+
 	/**
 	 * @param RequestInterface $request
 	 * @return void
