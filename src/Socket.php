@@ -2,21 +2,20 @@
 
 namespace Eg\AsyncHttp;
 
+use Eg\AsyncHttp\Buffer\BufferInterface;
 use Eg\AsyncHttp\Exception\NetworkException;
-use Eg\AsyncHttp\Exception\ResponseException;
 use Fiber;
 use RuntimeException;
 use Psr\Http\Message\UriInterface;
 
 class Socket
 {
-
 	/**
 	 * @var resource
 	 */
 	private $socket = null;
 
-	private string $read_buffer = '';
+    private BufferInterface $buffer;
 
 	private bool $is_ready_to_read = false;
 	private bool $is_ready_to_write = false;
@@ -41,10 +40,11 @@ class Socket
 	 */
 	private int $read_timeout = 0;
 
-	private int $fread_length = 0;
+	private int $read_length = 0;
 
     public function __construct(
 		UriInterface $uri,
+        BufferInterface $buffer,
         string $ip = null,
 
 		//1/100 of seconds
@@ -56,16 +56,16 @@ class Socket
 		//120 seconds
 		int $read_timeout = 120,
 
-		int $fread_length = 4 * 1024
+		int $read_length = 4 * 1024
 	){
-
         $this->ip = $ip;
+        $this->buffer = $buffer;
+
 		$this->select_usleep = $select_usleep;
 		$this->select_timeout = $select_timeout;
 
 		$this->read_timeout = $read_timeout;
-
-		$this->fread_length = $fread_length;
+		$this->read_length = $read_length;
 
 		$this->setSocketOpen($uri);
 	}
@@ -242,6 +242,8 @@ class Socket
 		string $payload
 	):void
 	{
+        $this->buffer->reset();
+
 		$this->isReadyToWrite();
 
 		$fwrite = fwrite($this->socket, $payload);
@@ -255,39 +257,16 @@ class Socket
 		}
 	}
 
-	private function appendBuffer(string $fragment):void{
-		$this->read_buffer .= $fragment;
-	}
-
-	private function readBufferLine():string|null{
-		if(empty($this->read_buffer)){
-			return null;
-		}
-
-		$pos = strpos($this->read_buffer, "\r\n");
-
-		if($pos === false){
-			return null;
-		}
-
-		$line = substr($this->read_buffer, 0, $pos);
-		$this->read_buffer = substr($this->read_buffer, ($pos + 2));
-
-		return $line;
-	}
-
 	public function readSpecificSize(int $size):string
 	{
 		$this->isReadyToRead();
 
-		$ds = $size - strlen($this->read_buffer);
-
 		$timeout = time() + $this->read_timeout;
 
-		while($ds > 0){
+		while($this->buffer->size() < $size){
 			$fragment = fread(
 				stream: $this->socket,
-				length: $this->fread_length);
+				length: $this->read_length);
 
 			if($fragment === false){
 				throw new RuntimeException('TODO');
@@ -302,39 +281,32 @@ class Socket
 				continue;
 			}
 
-			$timeout = time() + $this->read_timeout;
-			$this->appendBuffer($fragment);
-			$ds = $size - strlen($this->read_buffer);
+			$this->buffer->append($fragment);
 		}
 
-
-		$message = substr($this->read_buffer, 0, $size);
-		$this->read_buffer = substr($this->read_buffer, $size);
-
-		return $message;
+		return $this->buffer->read($size);
 	}
 
 	public function readToEnd():string{
 
 		$this->isReadyToRead();
-		$body = [];
 		do{
 			$fragment = fread(
 				stream: $this->socket,
-				length: $this->fread_length);
+				length: $this->read_length);
 
 			if(empty($fragment) == false ){
-				$body[] = $fragment;
+                $this->buffer->append($fragment);
 			}
 
 		}while(feof($this->socket) == false);
 
-		return implode('', $body);
+		return $this->buffer->read($this->buffer->size());
 	}
 
 	public function readLine():string
 	{
-		$line = $this->readBufferLine();
+		$line = $this->buffer->readLine();
 		if($line !== null){
 			return $line;
 		}
@@ -342,10 +314,11 @@ class Socket
 		$this->isReadyToRead();
 
 		$timeout = time() + $this->read_timeout;
+
 		do{
 			$fragment = fread(
 				stream: $this->socket,
-				length: $this->fread_length);
+				length: $this->read_length);
 
 			if($fragment === false){
 				throw new RuntimeException('TODO');
@@ -361,8 +334,9 @@ class Socket
 			}
 
 			$timeout = time() + $this->read_timeout;
-			$this->appendBuffer($fragment);
-			$line = $this->readBufferLine();
+            $this->buffer->append($fragment);
+
+			$line = $this->buffer->readLine();
 			if($line !== null){
 				return $line;
 			}

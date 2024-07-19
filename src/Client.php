@@ -2,45 +2,40 @@
 
 namespace Eg\AsyncHttp;
 
-use Eg\AsyncHttp\Exception\NetworkException;
+use Eg\AsyncHttp\Buffer\BufferInterface;
+use Eg\AsyncHttp\Buffer\FileBuffer;
+use Eg\AsyncHttp\Buffer\MemoryBuffer;
 use Eg\AsyncHttp\Exception\ResponseException;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use GuzzleHttp\Psr7\Response;
-use Psr\Http\Message\UriInterface;
-use RuntimeException;
 
 class Client
 {
-
 	/**
 	 * @var resource
 	 */
-	private ?Socket $socket = null;
+	private Socket|null $socket = null;
 
-    private ?string $ip;
+    private string|null $ip;
+
+    private BufferInterface $buffer;
 
     /**
      * @param string|null $ip IP address from which the connection will be made
      */
-    public function __construct(string $ip = null)
-    {
+    public function __construct(
+        string $ip = null,
+        BufferInterface $buffer = null
+    ){
         $this->ip = $ip;
+        $this->buffer = $buffer ?? new MemoryBuffer();
     }
 
     public function __destruct()
 	{
 		$this->socket = null;
 	}
-
-
-    public function setIP(string $ip = null):void
-    {
-        $this->ip = $ip;
-        if($this->socket != null){
-            $this->socket = null;
-        }
-    }
 
     public function getIP():string|null
     {
@@ -60,13 +55,14 @@ class Client
 		if($this->socket == null){
 			$this->socket = new Socket(
 				$request->getUri(),
+                $this->buffer,
                 $this->ip);
 		}
 
 		$this->socket->send(
 			$this->getRequestPayload($request));
 
-		list($version, $code, $status) = $this->getStatusLine(
+		[$version, $code, $status] = $this->getStatusLine(
 			$this->socket);
 
 		$header = $this->getHeader(
@@ -84,7 +80,6 @@ class Client
 			$code,
 			$header->getArray(),
 			$body,
-            //utf8_encode($body),
 			$version,
 			$status);
 	}
@@ -116,7 +111,7 @@ class Client
 				break;
 			}
 
-			list($key, $value) = explode(':', $line,2);
+			[$key, $value] = explode(':', $line,2);
 
 			$headers[$key] = trim($value);
 		}while(true);
@@ -129,13 +124,6 @@ class Client
         int $size
     ):string
     {
-        /**
-         * Add 2 \r\n
-         */
-        //TODO Need to check documentation
-//        $message = $socket->readSpecificSize($size + 2);
-//        return substr($message, 0, -2);
-
         return $socket->readSpecificSize($size);
     }
 
@@ -147,8 +135,8 @@ class Client
 
 		do{
 			$line = $socket->readLine();
-			if($line == null){
-				//error_log('line is empty');
+
+			if(empty($line)){
 				break;
 			}
 
@@ -179,6 +167,7 @@ class Client
 	):string|null
 	{
 		$length = $header->getContentLength();
+
 		if($length !== null){
 			return $this->getSingleBodyEncodedBySize(
                 $socket,
