@@ -17,15 +17,13 @@ class FileBuffer implements BufferInterface
     private string|null $name = null;
     private int $size = 0;
 
-    private string $directory;
-
     /**
      * @param string $directory
      */
     public function __construct(
         string $directory = null
     ){
-        $this->directory = $directory ?? sys_get_temp_dir();
+        $this->name = tempnam($directory ?? sys_get_temp_dir(), "async-http-".bin2hex(random_bytes(64)));
     }
 
     public function __destruct()
@@ -62,13 +60,7 @@ class FileBuffer implements BufferInterface
             fclose($this->reader);
         }
 
-        if($this->name){
-            unlink($this->name);
-        }
-
-        $this->name = tempnam($this->directory, "async-http-");
-
-        $this->writer = fopen($this->name, "wb");
+        $this->writer = fopen($this->name, "wb+");
         $this->reader = fopen($this->name, "rb");
     }
 
