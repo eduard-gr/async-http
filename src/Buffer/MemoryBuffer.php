@@ -32,7 +32,7 @@ class MemoryBuffer implements BufferInterface
         }
 
         $line = substr($this->buffer, 0, $pos);
-        $this->buffer = substr($this->buffer, ($pos + 2));
+        $this->buffer = substr($this->buffer, $pos + 2);
 
         return $line;
     }

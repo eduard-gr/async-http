@@ -136,7 +136,7 @@ class Socket
 		UriInterface $uri
 	):void
 	{
-		list($address, $context) = match($uri->getScheme()){
+		[$address, $context] = match($uri->getScheme()){
 			'http' => $this->getPlainConnection($uri),
 			'https' => $this->getSecureConnection($uri)
 		};
@@ -272,7 +272,7 @@ class Socket
 				throw new RuntimeException('TODO');
 			}
 
-			if(empty($fragment)){
+			if(strlen($fragment) === 0){
 				if(time() > $timeout){
 					throw NetworkException::readTimeout();
 				}
@@ -295,7 +295,7 @@ class Socket
 				stream: $this->socket,
 				length: $this->read_length);
 
-			if(empty($fragment) == false ){
+			if(strlen($fragment) > 0){
                 $this->buffer->append($fragment);
 			}
 
@@ -324,7 +324,7 @@ class Socket
 				throw new RuntimeException('TODO');
 			}
 
-			if(empty($fragment)){
+			if(strlen($fragment) === 0){
 				if(time() > $timeout){
 					throw NetworkException::readTimeout();
 				}

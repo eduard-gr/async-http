@@ -136,7 +136,7 @@ class Client
 		do{
 			$line = $socket->readLine();
 
-			if(empty($line)){
+			if(strlen($line) === 0){
 				break;
 			}
 
