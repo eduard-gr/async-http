@@ -5,7 +5,9 @@ namespace Eg\AsyncHttp;
 use Eg\AsyncHttp\Buffer\BufferInterface;
 use Eg\AsyncHttp\Buffer\FileBuffer;
 use Eg\AsyncHttp\Buffer\MemoryBuffer;
+use Eg\AsyncHttp\Exception\ClientException;
 use Eg\AsyncHttp\Exception\ResponseException;
+use Eg\AsyncHttp\Exception\ServerException;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use GuzzleHttp\Psr7\Response;
@@ -76,12 +78,18 @@ class Client
 			$this->socket = null;
 		}
 
-		return new Response(
-			$code,
-			$header->getArray(),
-			$body,
-			$version,
-			$status);
+        $response = new Response(
+            $code,
+            $header->getArray(),
+            $body,
+            $version,
+            $status);
+
+        return match(intval($code / 100 )){
+            4 => throw new ClientException($response),
+            5 => throw new ServerException($response),
+            default => $response
+        };
 	}
 
 	private function getStatusLine(
