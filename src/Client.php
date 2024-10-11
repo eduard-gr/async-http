@@ -118,16 +118,16 @@ class Client
                 }
 
                 $this->state = State::DONE;
-                [$version, $code, $status] = $status_line_reader->getReturn();
+                [$version, $status, $code] = $status_line_reader->getReturn();
 
                 $response = new Response(
-                    $code,
-                    $header_reader->getReturn()->getArray(),
-                    $body_reader->getReturn(),
-                    $version,
-                    $status);
+                    status: $status,
+                    headers: $header_reader->getReturn()->getArray(),
+                    body: $body_reader->getReturn(),
+                    version: $version,
+                    reason: $code);
 
-                return match(intval($code / 100 )){
+                return match(intval($status / 100 )){
                     4 => throw new ClientException($response),
                     5 => throw new ServerException($response),
                     default => [$this->state, $response]
@@ -148,12 +148,8 @@ class Client
 
 	private function getStatusLineReader():Generator
 	{
-		 $reader = $this->socket->readLine(512);
-         while($reader->valid()){
-             $reader->next();
-             yield;
-         }
-
+		$reader = $this->socket->readLine(512);
+        yield from $reader;
         $status_line = $reader->getReturn();
 
 		if(preg_match('/^HTTP\/(\d\.\d)\s+(\d+)\s+([A-Za-z\s]+)$/', $status_line, $matches) == false){
@@ -170,10 +166,7 @@ class Client
 
 		do{
             $reader = $this->socket->readLine();
-            while($reader->valid()){
-                $reader->next();
-                yield;
-            }
+            yield from $reader;
 
             $line = $reader->getReturn();
 
@@ -196,21 +189,28 @@ class Client
         $length = $header->getContentLength();
 
         if($length !== null){
-            yield from $this->getSingleBodyEncodedBySize($length);
+            $reader = $this->getSingleBodyEncodedBySize(
+                $length);
         }else if(strcasecmp($header->getTransferEncoding(), 'Chunked') == 0){
-            yield from $this->getSingleBodyEncodedByChunks();
+            $reader = $this->getSingleBodyEncodedByChunks();
         }else if(strcasecmp($header->getConnection(), 'Close') === 0){
-            yield from $this->socket->readToEnd();
+            $reader = $this->socket->readToEnd();
         }else{
             return null;
         }
+
+        yield from $reader;
+
+        return $reader->getReturn();
     }
 
     private function getSingleBodyEncodedBySize(
         int $size
     ):Generator
     {
-        yield from $this->socket->readSpecificSize($size);
+        $reader = $this->socket->readSpecificSize($size);
+        yield from $reader;
+        return $reader->getReturn();
     }
 
 	private function getSingleBodyEncodedByChunks():Generator
@@ -220,10 +220,7 @@ class Client
 		do{
 
             $reader = $this->socket->readLine();
-            while($reader->valid()){
-                $reader->next();
-                yield;
-            }
+            yield from $reader;
 
             $line = $reader->getReturn();
 
@@ -239,10 +236,7 @@ class Client
 				 * Read 2 \r\n
 				 */
                 $reader = $this->socket->readLine();
-                while($reader->valid()){
-                    $reader->next();
-                    yield;
-                }
+                yield from $reader;
 				break;
 			}
 
@@ -250,10 +244,7 @@ class Client
 			 * Add 2 \r\n
 			 */
             $reader = $this->socket->readSpecificSize($size + 2);
-            while($reader->valid()){
-                $reader->next();
-                yield;
-            }
+            yield from $reader;
             $message = $reader->getReturn();
 			$body[] = substr($message, 0, -2);
 		}while(true);

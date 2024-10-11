@@ -46,7 +46,6 @@ class MemoryBuffer implements BufferInterface
 
         $data = substr($this->buffer, 0, $size);
         $this->buffer = substr($this->buffer, $size);
-
         return $data;
     }
 }
