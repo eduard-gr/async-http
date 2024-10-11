@@ -15,6 +15,10 @@ use GuzzleHttp\Psr7\Response;
 
 class Client
 {
+
+    const CONTENT_LENGTH = 'Content-Length';
+    const TRANSFER_ENCODING = 'Transfer-Encoding';
+    const CONNECTION = 'Connection';
 	/**
 	 * @var resource
 	 */
@@ -23,15 +27,18 @@ class Client
     private string|null $ip;
 
     private BufferInterface $buffer;
-    private State $state = State::READY;
+    private State $state = State::CONNECTING;
 
-    /**
-     * @var callable
-     */
-    private $pool;
-    /**
-     * @param string|null $ip IP address from which the connection will be made
-     */
+
+
+    private RequestInterface $request;
+    private string $version;
+    private int $status;
+    private string $code;
+
+    private array $headers = [];
+    private array $body = [];
+
     public function __construct(
         BufferInterface $buffer = null
     ){
@@ -48,11 +55,6 @@ class Client
         return $this->ip;
     }
 
-    private function isActive(): bool
-    {
-        return !($this->state === State::READY || $this->state === State::DONE);
-    }
-
 	/**
 	 * @param RequestInterface $request
 	 * @throws \Throwable
@@ -60,11 +62,14 @@ class Client
 	public function send(
 		RequestInterface $request,
         string|null $ip = null
-	):callable
+	):void
 	{
-        if($this->isActive()){
-            return $this->pool;
+
+        if(($this->state === State::CONNECTING || $this->state === State::DONE) === false){
+            return;
         }
+
+        $this->request = $request;
 
 		if($this->socket == null || $this->ip != $ip){
             $this->ip = $ip;
@@ -72,73 +77,101 @@ class Client
 				$request->getUri(),
                 $this->buffer,
                 $this->ip);
+
+            $this->state = State::WAIT_FOR_WRITE;
+            return;
 		}
 
-        $payload = $this->getRequestPayload($request);
-        $this->state = State::SENDING;
-
-        return $this->pool = function() use ($payload){
-            if($this->state === State::SENDING){
-                if($this->socket->send($payload)){
-                    $this->state = State::LOADING;
-                }
-            }
-
-            if($this->state === State::LOADING) {
-                static $status_line_reader;
-
-                if(isset($status_line_reader) == false){
-                    $status_line_reader = $this->getStatusLineReader();
-                }
-
-                if($status_line_reader->valid()){
-                    $status_line_reader->next();
-                    return [$this->state, null];
-                }
-
-                static $header_reader;
-                if(isset($header_reader) == false){
-                    $header_reader = $this->getHeaderReader();
-                }
-
-                if($header_reader->valid()){
-                    $header_reader->next();
-                    return [$this->state, null];
-                }
-
-                static $body_reader;
-                if(isset($body_reader) == false){
-                    $body_reader = $this->getBodyReader(
-                        $header_reader->getReturn());
-                }
-
-                if($body_reader->valid()){
-                    $body_reader->next();
-                    return [$this->state, null];
-                }
-
-                $this->state = State::DONE;
-                [$version, $status, $code] = $status_line_reader->getReturn();
-
-                $response = new Response(
-                    status: $status,
-                    headers: $header_reader->getReturn()->getArray(),
-                    body: $body_reader->getReturn(),
-                    version: $version,
-                    reason: $code);
-
-                return match(intval($status / 100 )){
-                    4 => throw new ClientException($response),
-                    5 => throw new ServerException($response),
-                    default => [$this->state, $response]
-                };
-            }
-
-            return [$this->state, null];
-        };
+        $this->state = State::READY_TO_WRITING;
 	}
 
-    public function close():void{
+    public function tick():void
+    {
+        switch ($this->state) {
+            case State::WAIT_FOR_WRITE:
+                if($this->socket->isReadyToWrite()){
+                    $this->state = State::READY_TO_WRITING;
+                }
+            break;
+            case State::READY_TO_WRITING:
+                $this->socket->send($this->getRequestPayload());
+                $this->state = State::WAIT_FOR_READ;
+            break;
+            case State::WAIT_FOR_READ:
+                if($this->socket->isReadyToRead()){
+                    $this->state = State::READING_STATUS_LINE;
+                }
+            break;
+            case State::READING_STATUS_LINE:
+                $status_line = $this->getStatusLine();
+                if($status_line === false){
+                    return;
+                }
+
+                [$this->version, $this->status, $this->code] = $status_line;
+                $this->state = State::READING_HEADERS;
+            break;
+            case State::READING_HEADERS:
+                $line = $this->socket->readLine();
+                if($line === false){
+                    return;
+                }
+
+                if(empty($line)){
+                    $this->state = State::READING_BODY;
+                }
+
+                [$key, $value] = explode(':', $line,2);
+
+                $this->headers[trim($key)] = trim($value);
+            break;
+            case State::READING_BODY:
+                if(($this->headers[self::CONTENT_LENGTH] ?? null) !== null){
+                    $this->state = State::READING_BODY_ENCODED_BY_SIZE;
+                }else if(strcasecmp($this->headers[self::TRANSFER_ENCODING] ?? '', 'Chunked') == 0){
+                    $this->state = State::READING_BODY_CHUNKED;
+                }else if(strcasecmp($this->headers[self::CONNECTION] ?? '', 'Close') === 0){
+                    $this->state = State::READING_BODY_TO_END;
+                }else{
+                    $this->state = State::DONE;
+                }
+            break;
+            case State::READING_BODY_ENCODED_BY_SIZE:
+                $size = $this->headers[self::CONTENT_LENGTH];
+                $body = $this->socket->readSpecificSize(
+                    $size);
+
+                if($body === false){
+                    return;
+                }
+
+                $this->body[] = $body;
+                $this->state = State::DONE;
+            break;
+            case State::READING_BODY_CHUNKED:
+                $line = $this->socket->readLine();
+
+                if($line === false){
+                    return;
+                }
+
+                if(strlen($line) === 0){
+                    $this->state = State::DONE;
+                    return;
+                }
+
+                $size = hexdec($line);
+
+
+            break;
+            case State::READING_BODY_TO_END:
+
+            break;
+        }
+    }
+
+
+    public function reset():void{
         $this->pool = null;
         $this->socket = null;
 
@@ -146,11 +179,12 @@ class Client
         $this->state = State::READY;
     }
 
-	private function getStatusLineReader():Generator
+	private function getStatusLine():array|false
 	{
-		$reader = $this->socket->readLine(512);
-        yield from $reader;
-        $status_line = $reader->getReturn();
+        $status_line = $this->socket->readLine(512);
+        if($status_line === false){
+            return false;
+        }
 
 		if(preg_match('/^HTTP\/(\d\.\d)\s+(\d+)\s+([A-Za-z\s]+)$/', $status_line, $matches) == false){
 			throw ResponseException::startLine(
@@ -159,59 +193,6 @@ class Client
 
 		return array_slice($matches,1);
 	}
-
-	private function getHeaderReader():Generator
-	{
-		$headers = [];
-
-		do{
-            $reader = $this->socket->readLine();
-            yield from $reader;
-
-            $line = $reader->getReturn();
-
-			if(empty($line)){
-				break;
-			}
-
-			[$key, $value] = explode(':', $line,2);
-
-			$headers[$key] = trim($value);
-		}while(true);
-
-		return new Header($headers);
-	}
-
-    private function getBodyReader(
-        Header $header
-    ):Generator
-    {
-        $length = $header->getContentLength();
-
-        if($length !== null){
-            $reader = $this->getSingleBodyEncodedBySize(
-                $length);
-        }else if(strcasecmp($header->getTransferEncoding(), 'Chunked') == 0){
-            $reader = $this->getSingleBodyEncodedByChunks();
-        }else if(strcasecmp($header->getConnection(), 'Close') === 0){
-            $reader = $this->socket->readToEnd();
-        }else{
-            return null;
-        }
-
-        yield from $reader;
-
-        return $reader->getReturn();
-    }
-
-    private function getSingleBodyEncodedBySize(
-        int $size
-    ):Generator
-    {
-        $reader = $this->socket->readSpecificSize($size);
-        yield from $reader;
-        return $reader->getReturn();
-    }
 
 	private function getSingleBodyEncodedByChunks():Generator
 	{
@@ -254,13 +235,11 @@ class Client
 
 
 
-	private function getRequestPayload(
-		RequestInterface $request
-	):string
+	private function getRequestPayload():string
 	{
-		$uri = $request->getUri();
+		$uri = $this->request->getUri();
 
-		$body = strval($request->getBody());
+		$body = strval($this->request->getBody());
 		$path = [
             empty($uri->getPath())
                 ? '/'
@@ -273,17 +252,17 @@ class Client
 
 		$payload = [
 			sprintf('%s %s HTTP/1.1',
-				$request->getMethod(),
+                $this->request->getMethod(),
 				implode('?', $path)),
 		];
 
-		foreach ($request->getHeaders() as $name => $value){
+		foreach ($this->request->getHeaders() as $name => $value){
 			$payload[] = is_array($value)
 				? sprintf('%s: %s',$name, implode("\t", $value))
 				: sprintf('%s: %s',$name, $value);
 		}
 
-		if(in_array($request->getMethod(), ['POST', 'PUT']) && empty($body) === false){
+		if(in_array($this->request->getMethod(), ['POST', 'PUT']) && empty($body) === false){
 			$payload[] = sprintf('Content-Length: %d', strlen($body));
 		}
 

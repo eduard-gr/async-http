@@ -160,56 +160,42 @@ class Socket
 		stream_set_blocking($this->socket, false);
 	}
 
-	private function isReadyToWrite():bool{
+	public function isReadyToWrite():bool{
 
 		if($this->is_ready_to_write){
 			return true;
 		}
 
-//		/**
-//		 * We are waiting for when it will be possible to write to the socket
-//		 */
-//		$timeout = time() + $this->select_timeout;
-//		do {
-			$reader = null;
-			$writer = [$this->socket];
-			$except = null;
+        $reader = null;
+        $writer = [$this->socket];
+        $except = null;
 
-			$selected = stream_select(
-				read: $reader,
-				write: $writer,
-				except: $except,
-				seconds: 0,
-				microseconds: $this->select_usleep);
+        $selected = stream_select(
+            read: $reader,
+            write: $writer,
+            except: $except,
+            seconds: 0,
+            microseconds: $this->select_usleep);
 
-            if($selected === false){
-                throw NetworkException::socketSelectTimeout();
-            }
+        if($selected === false){
+            throw NetworkException::socketSelectTimeout();
+        }
 
-			if($selected) {
-				return $this->is_ready_to_write = true;
-			}
+        if($selected) {
+            return $this->is_ready_to_write = true;
+        }
 
-            return false;
-//			if(time() > $timeout){
-//				throw NetworkException::socketSelectTimeout();
-//			}
-//
-//			//Fiber::suspend();
-//		}while(true);
+        return false;
+
 	}
 
-	private function isReadyToRead():bool{
+    public function isReadyToRead():bool{
 
 		if($this->is_ready_to_read){
 			return true;
 		}
 
-//		/**
-//		 * We are waiting for when it will be possible to write to the socket
-//		 */
-//		$timeout = time() + $this->select_timeout;
-//		do {
+
         $reader = [$this->socket];
         $writer = null;
         $except = null;
@@ -230,13 +216,6 @@ class Socket
         }
 
         return false;
-//			if(time() > $timeout){
-//				throw NetworkException::socketSelectTimeout();
-//			}
-
-			//TODO: Check select timeout
-			//Fiber::suspend();
-		//}while(true);
 	}
 
     /**
