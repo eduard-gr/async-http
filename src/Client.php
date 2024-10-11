@@ -139,8 +139,8 @@ class Client
 	}
 
     public function close():void{
-        unset($this->pool);
-        unset($this->socket);
+        $this->pool = null;
+        $this->socket = null;
 
         $this->buffer->reset();
         $this->state = State::READY;
