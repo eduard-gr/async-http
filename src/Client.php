@@ -121,6 +121,14 @@ class Client
         };
 	}
 
+    public function close():void{
+        unset($this->pool);
+        unset($this->socket);
+
+        $this->buffer->reset();
+        $this->state = State::READY;
+    }
+
 	private function getStatusLineReader():Generator
 	{
 		 $reader = $this->socket->readLine(512);
