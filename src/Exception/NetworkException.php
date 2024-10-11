@@ -22,6 +22,10 @@ class NetworkException extends TransferException
     public static function failedToSend():self
     {
         return new self('failed to send data');
+    }
 
+    public static function failedToRead():self
+    {
+        return new self('failed to read data');
     }
 }

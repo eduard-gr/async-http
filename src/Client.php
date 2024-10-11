@@ -8,6 +8,7 @@ use Eg\AsyncHttp\Buffer\MemoryBuffer;
 use Eg\AsyncHttp\Exception\ClientException;
 use Eg\AsyncHttp\Exception\ResponseException;
 use Eg\AsyncHttp\Exception\ServerException;
+use Generator;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use GuzzleHttp\Psr7\Response;
@@ -22,15 +23,18 @@ class Client
     private string|null $ip;
 
     private BufferInterface $buffer;
+    private State $state = State::READY;
 
+    /**
+     * @var callable
+     */
+    private $pool;
     /**
      * @param string|null $ip IP address from which the connection will be made
      */
     public function __construct(
-        string $ip = null,
         BufferInterface $buffer = null
     ){
-        $this->ip = $ip;
         $this->buffer = $buffer ?? new MemoryBuffer();
     }
 
@@ -46,74 +50,107 @@ class Client
 
 	/**
 	 * @param RequestInterface $request
-	 * @return void
 	 * @throws \Throwable
 	 */
 	public function send(
-		RequestInterface $request
-	):ResponseInterface
+		RequestInterface $request,
+        string|null $ip = null
+	):callable
 	{
 
-		if($this->socket == null){
+        if($this->state != State::READY || $this->state != State::DONE){
+            return $this->pool;
+        }
+
+		if($this->socket == null || $this->ip != $ip){
+            $this->ip = $ip;
 			$this->socket = new Socket(
 				$request->getUri(),
                 $this->buffer,
                 $this->ip);
 		}
 
-		$this->socket->send(
-			$this->getRequestPayload($request));
+        $payload = $this->getRequestPayload($request);
+        $this->state = State::SENDING;
 
-		[$version, $code, $status] = $this->getStatusLine(
-			$this->socket);
+        return $this->pool = function() use ($payload){
+            if($this->state === State::SENDING){
+                if($this->socket->send($payload)){
+                    $this->state = State::LOADING;
+                }
+            }
 
-		$header = $this->getHeader(
-			$this->socket);
+            if($this->state === State::LOADING) {
+                static $status_line_reader = $this->getStatusLineReader();
+                if($status_line_reader->valid()){
+                    $status_line_reader->next();
+                    return [$this->state, null];
+                }
 
-		$body = $this->getBody(
-			$this->socket,
-			$header);
+                static $header_reader = $this->getHeaderReader();
+                if($header_reader->valid()){
+                    $header_reader->next();
+                    return [$this->state, null];
+                }
 
-		if(strcasecmp($header->getConnection(), 'Close') === 0){
-			$this->socket = null;
-		}
+                static $body_reader = $this->getBodyReader(
+                    $header_reader->getReturn());
+                if($body_reader->valid()){
+                    $body_reader->next();
+                    return [$this->state, null];
+                }
 
-        $response = new Response(
-            $code,
-            $header->getArray(),
-            $body,
-            $version,
-            $status);
+                $this->state = State::DONE;
+                [$version, $code, $status] = $status_line_reader->getReturn();
 
-        return match(intval($code / 100 )){
-            4 => throw new ClientException($response),
-            5 => throw new ServerException($response),
-            default => $response
+                $response = new Response(
+                    $code,
+                    $header_reader->getReturn()->getArray(),
+                    $body_reader->getReturn(),
+                    $version,
+                    $status);
+
+                return match(intval($code / 100 )){
+                    4 => throw new ClientException($response),
+                    5 => throw new ServerException($response),
+                    default => [$this->state, $response]
+                };
+            }
+
+            return [$this->state, null];
         };
 	}
 
-	private function getStatusLine(
-		Socket $socket
-	):array
+	private function getStatusLineReader():Generator
 	{
-		$start_line = $socket->readLine();
+		 $reader = $this->socket->readLine(512);
+         while($reader->valid()){
+             $reader->next();
+             yield;
+         }
 
-		if(preg_match('/^HTTP\/(\d\.\d)\s+(\d+)\s+([A-Za-z\s]+)$/', $start_line, $matches) == false){
+        $status_line = $reader->getReturn();
+
+		if(preg_match('/^HTTP\/(\d\.\d)\s+(\d+)\s+([A-Za-z\s]+)$/', $status_line, $matches) == false){
 			throw ResponseException::startLine(
-				$start_line);
+				$status_line);
 		}
 
 		return array_slice($matches,1);
 	}
 
-	private function getHeader(
-		Socket $socket
-	): Header
+	private function getHeaderReader():Generator
 	{
 		$headers = [];
 
 		do{
-			$line = $socket->readLine();
+            $reader = $this->socket->readLine();
+            while($reader->valid()){
+                $reader->next();
+                yield;
+            }
+
+            $line = $reader->getReturn();
 
 			if(empty($line)){
 				break;
@@ -127,22 +164,43 @@ class Client
 		return new Header($headers);
 	}
 
-    private function getSingleBodyEncodedBySize(
-        Socket $socket,
-        int $size
-    ):string
+    private function getBodyReader(
+        Header $header
+    ):Generator
     {
-        return $socket->readSpecificSize($size);
+        $length = $header->getContentLength();
+
+        if($length !== null){
+            yield from $this->getSingleBodyEncodedBySize($length);
+        }else if(strcasecmp($header->getTransferEncoding(), 'Chunked') == 0){
+            yield from $this->getSingleBodyEncodedByChunks();
+        }else if(strcasecmp($header->getConnection(), 'Close') === 0){
+            yield from $this->socket->readToEnd();
+        }else{
+            return null;
+        }
     }
 
-	private function getSingleBodyEncodedByChunks(
-		Socket $socket
-	):string
+    private function getSingleBodyEncodedBySize(
+        int $size
+    ):Generator
+    {
+        yield from $this->socket->readSpecificSize($size);
+    }
+
+	private function getSingleBodyEncodedByChunks():Generator
 	{
 		$body = [];
 
 		do{
-			$line = $socket->readLine();
+
+            $reader = $this->socket->readLine();
+            while($reader->valid()){
+                $reader->next();
+                yield;
+            }
+
+            $line = $reader->getReturn();
 
 			if(strlen($line) === 0){
 				break;
@@ -155,44 +213,30 @@ class Client
 				/**
 				 * Read 2 \r\n
 				 */
-				$socket->readLine();
+                $reader = $this->socket->readLine();
+                while($reader->valid()){
+                    $reader->next();
+                    yield;
+                }
 				break;
 			}
 
 			/**
 			 * Add 2 \r\n
 			 */
-            $message = $socket->readSpecificSize($size + 2);
+            $reader = $this->socket->readSpecificSize($size + 2);
+            while($reader->valid()){
+                $reader->next();
+                yield;
+            }
+            $message = $reader->getReturn();
 			$body[] = substr($message, 0, -2);
 		}while(true);
 
 		return implode('', $body);
 	}
 
-	private function getBody(
-		Socket $socket,
-		Header $header
-	):string|null
-	{
-		$length = $header->getContentLength();
 
-		if($length !== null){
-			return $this->getSingleBodyEncodedBySize(
-                $socket,
-                $length);
-		}
-
-		if(strcasecmp($header->getTransferEncoding(), 'Chunked') == 0){
-			return $this->getSingleBodyEncodedByChunks(
-				$socket);
-		}
-
-		if(strcasecmp($header->getConnection(), 'Close') === 0){
-			return $socket->readToEnd();
-		}
-
-		return null;
-	}
 
 	private function getRequestPayload(
 		RequestInterface $request

@@ -5,11 +5,14 @@ namespace Eg\AsyncHttp;
 use Eg\AsyncHttp\Buffer\BufferInterface;
 use Eg\AsyncHttp\Exception\NetworkException;
 use Fiber;
+use Generator;
 use RuntimeException;
 use Psr\Http\Message\UriInterface;
 
 class Socket
 {
+
+    const READ_LENGTH = 8 * 1024;
 	/**
 	 * @var resource
 	 */
@@ -39,8 +42,6 @@ class Socket
 	 * @var int How long in seconds do we wait for data from the server?
 	 */
 	private int $read_timeout = 0;
-
-	private int $read_length = 0;
 
     public function __construct(
 		UriInterface $uri,
@@ -159,22 +160,19 @@ class Socket
 		stream_set_blocking($this->socket, false);
 	}
 
-
 	private function isReadyToWrite():bool{
 
 		if($this->is_ready_to_write){
 			return true;
 		}
 
-		$socket = $this->socket;
-
-		/**
-		 * We are waiting for when it will be possible to write to the socket
-		 */
-		$timeout = time() + $this->select_timeout;
-		do {
+//		/**
+//		 * We are waiting for when it will be possible to write to the socket
+//		 */
+//		$timeout = time() + $this->select_timeout;
+//		do {
 			$reader = null;
-			$writer = [$socket];
+			$writer = [$this->socket];
 			$except = null;
 
 			$selected = stream_select(
@@ -184,17 +182,21 @@ class Socket
 				seconds: 0,
 				microseconds: $this->select_usleep);
 
-			if(empty($writer) === false) {
-				$this->is_ready_to_write = true;
-				return true;
+            if($selected === false){
+                throw NetworkException::socketSelectTimeout();
+            }
+
+			if($selected) {
+				return $this->is_ready_to_write = true;
 			}
 
-			if(time() > $timeout){
-				throw NetworkException::socketSelectTimeout();
-			}
-
-			Fiber::suspend();
-		}while(true);
+            return false;
+//			if(time() > $timeout){
+//				throw NetworkException::socketSelectTimeout();
+//			}
+//
+//			//Fiber::suspend();
+//		}while(true);
 	}
 
 	private function isReadyToRead():bool{
@@ -203,73 +205,86 @@ class Socket
 			return true;
 		}
 
-		$socket = $this->socket;
+//		/**
+//		 * We are waiting for when it will be possible to write to the socket
+//		 */
+//		$timeout = time() + $this->select_timeout;
+//		do {
+        $reader = [$this->socket];
+        $writer = null;
+        $except = null;
 
-		/**
-		 * We are waiting for when it will be possible to write to the socket
-		 */
-		$timeout = time() + $this->select_timeout;
-		do {
-			$reader = [$socket];
-			$writer = null;
-			$except = null;
+        $selected = stream_select(
+            read: $reader,
+            write: $writer,
+            except: $except,
+            seconds: 0,
+            microseconds: $this->select_usleep);
 
-			$selected = stream_select(
-				read: $reader,
-				write: $writer,
-				except: $except,
-				seconds: 0,
-				microseconds: $this->select_usleep);
+        if($selected === false){
+            throw NetworkException::socketSelectTimeout();
+        }
 
-			if(empty($reader) === false) {
-				$this->is_ready_to_read = true;
-				return true;
-			}
+        if($selected) {
+            return $this->is_ready_to_read = true;
+        }
 
-			if(time() > $timeout){
-				throw NetworkException::socketSelectTimeout();
-			}
+        return false;
+//			if(time() > $timeout){
+//				throw NetworkException::socketSelectTimeout();
+//			}
 
 			//TODO: Check select timeout
-			Fiber::suspend();
-		}while(true);
+			//Fiber::suspend();
+		//}while(true);
 	}
 
-	/**
-	 * @throws \Throwable
-	 */
+    /**
+     * @param string $payload
+     * @return int
+     * 0 - waiting socket
+     * 1 - send
+     */
 	public function send(
 		string $payload
-	):void
+	):int
 	{
         $this->buffer->reset();
 
-		$this->isReadyToWrite();
+		if($this->isReadyToWrite() === false){
+            return 0;
+        }
 
-		$fwrite = fwrite($this->socket, $payload);
+		$result = fwrite($this->socket, $payload);
 
-        if($fwrite === false){
+        if($result === false){
             throw NetworkException::failedToSend();
         }
 
-		if($fwrite != strlen($payload)){
+		if($result != strlen($payload)){
 			throw NetworkException::writeSizeException();
 		}
+
+        return 1;
 	}
 
-	public function readSpecificSize(int $size):string
+	public function readSpecificSize(
+        int $size
+    ):Generator
 	{
-		$this->isReadyToRead();
+        if($this->isReadyToRead() === false){
+            yield;
+        }
 
 		$timeout = time() + $this->read_timeout;
 
 		while($this->buffer->size() < $size){
 			$fragment = fread(
 				stream: $this->socket,
-				length: $this->read_length);
+				length: self::READ_LENGTH);
 
 			if($fragment === false){
-				throw new RuntimeException('TODO');
+                throw NetworkException::failedToRead();
 			}
 
 			if(strlen($fragment) === 0){
@@ -277,7 +292,7 @@ class Socket
 					throw NetworkException::readTimeout();
 				}
 
-				Fiber::suspend();
+                yield;
 				continue;
 			}
 
@@ -287,60 +302,80 @@ class Socket
 		return $this->buffer->read($size);
 	}
 
-	public function readToEnd():string{
+	public function readToEnd():Generator
+    {
+        if($this->isReadyToRead() === false){
+            yield;
+        }
 
-		$this->isReadyToRead();
+        $timeout = time() + $this->read_timeout;
+
 		do{
 			$fragment = fread(
 				stream: $this->socket,
-				length: $this->read_length);
+				length: self::READ_LENGTH);
 
-			if(strlen($fragment) > 0){
-                $this->buffer->append($fragment);
-			}
+            if($fragment === false){
+                throw NetworkException::failedToRead();
+            }
 
+            if(strlen($fragment) === 0){
+                if(time() > $timeout){
+                    throw NetworkException::readTimeout();
+                }
+
+                yield;
+                continue;
+            }
+
+            $timeout = time() + $this->read_timeout;
+            $this->buffer->append($fragment);
 		}while(feof($this->socket) == false);
 
 		return $this->buffer->read($this->buffer->size());
 	}
 
-	public function readLine():string
+	public function readLine(
+        int $length = self::READ_LENGTH
+    ):Generator
 	{
+
+        if($this->isReadyToRead() === false){
+            yield;
+        }
+
 		$line = $this->buffer->readLine();
 		if($line !== null){
-			return $line;
+            return $line;
 		}
 
-		$this->isReadyToRead();
+        $timeout = time() + $this->read_timeout;
 
-		$timeout = time() + $this->read_timeout;
+        do{
+            $fragment = fread(
+                stream: $this->socket,
+                length: $length);
 
-		do{
-			$fragment = fread(
-				stream: $this->socket,
-				length: $this->read_length);
+            if($fragment === false){
+                throw NetworkException::failedToRead();
+            }
 
-			if($fragment === false){
-				throw new RuntimeException('TODO');
-			}
+            if(strlen($fragment) === 0){
+                if(time() > $timeout){
+                    throw NetworkException::readTimeout();
+                }
 
-			if(strlen($fragment) === 0){
-				if(time() > $timeout){
-					throw NetworkException::readTimeout();
-				}
+                yield;
+                continue;
+            }
 
-				Fiber::suspend();
-				continue;
-			}
-
-			$timeout = time() + $this->read_timeout;
+            $timeout = time() + $this->read_timeout;
             $this->buffer->append($fragment);
 
-			$line = $this->buffer->readLine();
-			if($line !== null){
-				return $line;
-			}
-
-		}while(true);
+            $line = $this->buffer->readLine();
+            if($line !== null){
+                return $line;
+            }
+        }while(true);
 	}
 }
