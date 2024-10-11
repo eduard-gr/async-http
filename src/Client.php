@@ -38,7 +38,7 @@ class Client
 
     private array $headers = [];
     private array $body = [];
-
+    private int $size;
     public function __construct(
         BufferInterface $buffer = null
     ){
@@ -64,7 +64,6 @@ class Client
         string|null $ip = null
 	):void
 	{
-
         if(($this->state === State::CONNECTING || $this->state === State::DONE) === false){
             return;
         }
@@ -87,7 +86,7 @@ class Client
 
     public function tick():void
     {
-        switch ($this->state) {
+        switch($this->state) {
             case State::WAIT_FOR_WRITE:
                 if($this->socket->isReadyToWrite()){
                     $this->state = State::READY_TO_WRITING;
@@ -119,6 +118,7 @@ class Client
 
                 if(empty($line)){
                     $this->state = State::READING_BODY;
+                    return;
                 }
 
                 [$key, $value] = explode(':', $line,2);
@@ -126,20 +126,24 @@ class Client
                 $this->headers[trim($key)] = trim($value);
             break;
             case State::READING_BODY:
-                if(($this->headers[self::CONTENT_LENGTH] ?? null) !== null){
+
+                $header = new Header($this->headers);
+                $size = $header->getContentLength();
+
+                if($size !== null){
+                    $this->size = $size;
                     $this->state = State::READING_BODY_ENCODED_BY_SIZE;
-                }else if(strcasecmp($this->headers[self::TRANSFER_ENCODING] ?? '', 'Chunked') == 0){
+                }else if(strcasecmp($header->getTransferEncoding(), 'Chunked') == 0){
                     $this->state = State::READING_BODY_CHUNKED_SIZE;
-                }else if(strcasecmp($this->headers[self::CONNECTION] ?? '', 'Close') === 0){
+                }else if(strcasecmp($header->getConnection(), 'Close') === 0){
                     $this->state = State::READING_BODY_TO_END;
                 }else{
                     $this->state = State::DONE;
                 }
             break;
             case State::READING_BODY_ENCODED_BY_SIZE:
-                $size = $this->headers[self::CONTENT_LENGTH];
                 $body = $this->socket->readSpecificSize(
-                    $size);
+                    $this->size);
 
                 if($body === false){
                     return;
@@ -160,13 +164,13 @@ class Client
                     return;
                 }
 
-                $size = hexdec($line);
+                $this->size = hexdec($line);
                 $this->state = State::READING_BODY_CHUNKED_BODY;
             break;
             case State::READING_BODY_CHUNKED_BODY:
 
                 $body = $this->socket->readSpecificSize(
-                    $size);
+                    $this->size);
 
                 if($body === false){
                     return;
@@ -176,18 +180,54 @@ class Client
                 $this->state = State::READING_BODY_CHUNKED_SIZE;
             break;
             case State::READING_BODY_TO_END:
-
+                $body = $this->socket->readToEnd();
+                if($body === false){
+                    return;
+                }
+                $this->state = State::DONE;
             break;
         }
     }
 
+    public function isDone():bool
+    {
+        return $this->state === State::DONE;
+    }
+
+    public function getResponse():ResponseInterface
+    {
+
+//        error_log(json_encode([
+//            $this->status,
+//            $this->version,
+//            $this->code
+//        ]));
+//
+//        error_log(json_encode($this->headers));
+//        error_log(json_encode($this->body));
+
+        $response = new Response(
+            status: $this->status,
+            headers: $this->headers,
+            body: implode('', $this->body),
+            version: $this->version,
+            reason: $this->code);
+
+        return match(intval($this->status / 100 )){
+            4 => throw new ClientException($response),
+            5 => throw new ServerException($response),
+            default => $response
+        };
+    }
 
     public function reset():void{
-        $this->pool = null;
         $this->socket = null;
-
         $this->buffer->reset();
-        //$this->state = State::READY;
+        $this->state = State::CONNECTING;
+        $this->headers = [];
+        $this->body = [];
+        $this->size = 0;
+        $this->status = 0;
     }
 
 	private function getStatusLine():array|false
