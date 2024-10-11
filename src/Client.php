@@ -48,6 +48,11 @@ class Client
         return $this->ip;
     }
 
+    private function isActive(): bool
+    {
+        return !($this->state === State::READY || $this->state === State::DONE);
+    }
+
 	/**
 	 * @param RequestInterface $request
 	 * @throws \Throwable
@@ -57,8 +62,7 @@ class Client
         string|null $ip = null
 	):callable
 	{
-
-        if($this->state != State::READY || $this->state != State::DONE){
+        if($this->isActive()){
             return $this->pool;
         }
 
@@ -81,20 +85,33 @@ class Client
             }
 
             if($this->state === State::LOADING) {
-                static $status_line_reader = $this->getStatusLineReader();
+                static $status_line_reader;
+
+                if(isset($status_line_reader) == false){
+                    $status_line_reader = $this->getStatusLineReader();
+                }
+
                 if($status_line_reader->valid()){
                     $status_line_reader->next();
                     return [$this->state, null];
                 }
 
-                static $header_reader = $this->getHeaderReader();
+                static $header_reader;
+                if(isset($header_reader) == false){
+                    $header_reader = $this->getHeaderReader();
+                }
+
                 if($header_reader->valid()){
                     $header_reader->next();
                     return [$this->state, null];
                 }
 
-                static $body_reader = $this->getBodyReader(
-                    $header_reader->getReturn());
+                static $body_reader;
+                if(isset($body_reader) == false){
+                    $body_reader = $this->getBodyReader(
+                        $header_reader->getReturn());
+                }
+
                 if($body_reader->valid()){
                     $body_reader->next();
                     return [$this->state, null];
