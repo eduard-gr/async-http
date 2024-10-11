@@ -129,7 +129,7 @@ class Client
                 if(($this->headers[self::CONTENT_LENGTH] ?? null) !== null){
                     $this->state = State::READING_BODY_ENCODED_BY_SIZE;
                 }else if(strcasecmp($this->headers[self::TRANSFER_ENCODING] ?? '', 'Chunked') == 0){
-                    $this->state = State::READING_BODY_CHUNKED;
+                    $this->state = State::READING_BODY_CHUNKED_SIZE;
                 }else if(strcasecmp($this->headers[self::CONNECTION] ?? '', 'Close') === 0){
                     $this->state = State::READING_BODY_TO_END;
                 }else{
@@ -148,7 +148,7 @@ class Client
                 $this->body[] = $body;
                 $this->state = State::DONE;
             break;
-            case State::READING_BODY_CHUNKED:
+            case State::READING_BODY_CHUNKED_SIZE:
                 $line = $this->socket->readLine();
 
                 if($line === false){
@@ -161,8 +161,19 @@ class Client
                 }
 
                 $size = hexdec($line);
+                $this->state = State::READING_BODY_CHUNKED_BODY;
+            break;
+            case State::READING_BODY_CHUNKED_BODY:
 
+                $body = $this->socket->readSpecificSize(
+                    $size);
 
+                if($body === false){
+                    return;
+                }
+
+                $this->body[] = $body;
+                $this->state = State::READING_BODY_CHUNKED_SIZE;
             break;
             case State::READING_BODY_TO_END:
 
@@ -176,64 +187,23 @@ class Client
         $this->socket = null;
 
         $this->buffer->reset();
-        $this->state = State::READY;
+        //$this->state = State::READY;
     }
 
 	private function getStatusLine():array|false
 	{
-        $status_line = $this->socket->readLine(512);
-        if($status_line === false){
+        $line = $this->socket->readLine(512);
+        if($line === false){
             return false;
         }
 
-		if(preg_match('/^HTTP\/(\d\.\d)\s+(\d+)\s+([A-Za-z\s]+)$/', $status_line, $matches) == false){
+		if(preg_match('/^HTTP\/(\d\.\d)\s+(\d+)\s+([A-Za-z\s]+)$/', $line, $matches) == false){
 			throw ResponseException::startLine(
-				$status_line);
+				$line);
 		}
 
 		return array_slice($matches,1);
 	}
-
-	private function getSingleBodyEncodedByChunks():Generator
-	{
-		$body = [];
-
-		do{
-
-            $reader = $this->socket->readLine();
-            yield from $reader;
-
-            $line = $reader->getReturn();
-
-			if(strlen($line) === 0){
-				break;
-			}
-
-			$size = hexdec($line);
-
-			//TODO: Do we need max size ?
-			if($size < 1 || $size > 12345678){
-				/**
-				 * Read 2 \r\n
-				 */
-                $reader = $this->socket->readLine();
-                yield from $reader;
-				break;
-			}
-
-			/**
-			 * Add 2 \r\n
-			 */
-            $reader = $this->socket->readSpecificSize($size + 2);
-            yield from $reader;
-            $message = $reader->getReturn();
-			$body[] = substr($message, 0, -2);
-		}while(true);
-
-		return implode('', $body);
-	}
-
-
 
 	private function getRequestPayload():string
 	{

@@ -195,7 +195,6 @@ class Socket
 			return true;
 		}
 
-
         $reader = [$this->socket];
         $writer = null;
         $except = null;
@@ -249,78 +248,66 @@ class Socket
 
 	public function readSpecificSize(
         int $size
-    ):Generator
+    ):string|bool
 	{
         if($this->isReadyToRead() === false){
-            yield;
+            return false;
         }
 
-		$timeout = time() + $this->read_timeout;
+        $fragment = fread(
+            stream: $this->socket,
+            length: self::READ_LENGTH);
 
-		while($this->buffer->size() < $size){
-			$fragment = fread(
-				stream: $this->socket,
-				length: self::READ_LENGTH);
+        if($fragment === false){
+            throw NetworkException::failedToRead();
+        }
 
-			if($fragment === false){
-                throw NetworkException::failedToRead();
-			}
+        if(strlen($fragment) === 0){
+            return false;
+        }
 
-			if(strlen($fragment) === 0){
-				if(time() > $timeout){
-					throw NetworkException::readTimeout();
-				}
+        $this->buffer->append($fragment);
 
-                yield;
-				continue;
-			}
-
-			$this->buffer->append($fragment);
-		}
+        if($this->buffer->size() < $size){
+            return false;
+        }
 
 		return $this->buffer->read($size);
 	}
 
-	public function readToEnd():Generator
+	public function readToEnd():string|bool
     {
         if($this->isReadyToRead() === false){
-            yield;
+            return false;
         }
 
-        $timeout = time() + $this->read_timeout;
+        $fragment = fread(
+            stream: $this->socket,
+            length: self::READ_LENGTH);
 
-		do{
-			$fragment = fread(
-				stream: $this->socket,
-				length: self::READ_LENGTH);
+        if($fragment === false){
+            throw NetworkException::failedToRead();
+        }
 
-            if($fragment === false){
-                throw NetworkException::failedToRead();
-            }
+        if(strlen($fragment) === 0){
+            return false;
+        }
 
-            if(strlen($fragment) === 0){
-                if(time() > $timeout){
-                    throw NetworkException::readTimeout();
-                }
+        $this->buffer->append($fragment);
 
-                yield;
-                continue;
-            }
+        if(feof($this->socket) === false){
+            return false;
+        }
 
-            $timeout = time() + $this->read_timeout;
-            $this->buffer->append($fragment);
-		}while(feof($this->socket) == false);
-
-		return $this->buffer->read($this->buffer->size());
+        return $this->buffer->read($this->buffer->size());
 	}
 
 	public function readLine(
         int $length = self::READ_LENGTH
-    ):Generator
+    ):string|false
 	{
-
         if($this->isReadyToRead() === false){
-            yield;
+            return false;
         }
 
 		$line = $this->buffer->readLine();
@@ -328,33 +315,25 @@ class Socket
             return $line;
 		}
 
-        $timeout = time() + $this->read_timeout;
+        $fragment = fread(
+            stream: $this->socket,
+            length: $length);
 
-        do{
-            $fragment = fread(
-                stream: $this->socket,
-                length: $length);
+        if($fragment === false){
+            throw NetworkException::failedToRead();
+        }
 
-            if($fragment === false){
-                throw NetworkException::failedToRead();
-            }
+        if(strlen($fragment) === 0){
+            return false;
+        }
 
-            if(strlen($fragment) === 0){
-                if(time() > $timeout){
-                    throw NetworkException::readTimeout();
-                }
+        $this->buffer->append($fragment);
 
-                yield;
-                continue;
-            }
+        $line = $this->buffer->readLine();
+        if($line === null){
+            return false;
+        }
 
-            $timeout = time() + $this->read_timeout;
-            $this->buffer->append($fragment);
-
-            $line = $this->buffer->readLine();
-            if($line !== null){
-                return $line;
-            }
-        }while(true);
+        return $line;
 	}
 }

@@ -17,8 +17,9 @@ enum State:int
     case READING_HEADERS = 5;
     case READING_BODY = 6;
     case READING_BODY_ENCODED_BY_SIZE = 7;
-    case READING_BODY_CHUNKED = 8;
-    case READING_BODY_TO_END = 9;
+    case READING_BODY_CHUNKED_SIZE = 8;
+    case READING_BODY_CHUNKED_BODY = 9;
+    case READING_BODY_TO_END = 10;
     case DONE = 777;
 
 }
