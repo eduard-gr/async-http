@@ -82,7 +82,6 @@ class Client
 
     public function tick():void
     {
-		//error_log(json_encode($this->state));
 
         switch($this->state) {
             case State::WAIT_FOR_WRITE:
@@ -118,8 +117,6 @@ class Client
                     $this->state = State::READING_BODY;
                     return;
                 }
-
-				error_log($line);
 
                 [$key, $value] = explode(':', $line,2);
                 $this->headers[trim($key)] = trim($value);
