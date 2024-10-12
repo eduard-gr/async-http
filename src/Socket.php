@@ -26,48 +26,26 @@ class Socket
     /**
      * @var string|null IP address from which the connection will be made
      */
-    private ?string $ip;
+    private string|null $ip;
+
 
 	/**
 	 * @var int How long in microsseconds select sleep
 	 */
 	private int $select_usleep = 0;
 
-	/**
-	 * @var int How long in seconds do we wait for socket select?
-	 */
-	private int $select_timeout = 0;
-
-	/**
-	 * @var int How long in seconds do we wait for data from the server?
-	 */
-	private int $read_timeout = 0;
-
     public function __construct(
 		UriInterface $uri,
         BufferInterface $buffer,
-        string $ip = null,
+
+        string|null $ip = null,
 
 		//1/100 of seconds
 		int $select_usleep = 10000,
-
-		//30 seconds
-		int $select_timeout = 30,
-
-		//120 seconds
-		int $read_timeout = 120,
-
-		int $read_length = 4 * 1024
 	){
         $this->ip = $ip;
         $this->buffer = $buffer;
-
 		$this->select_usleep = $select_usleep;
-		$this->select_timeout = $select_timeout;
-
-		$this->read_timeout = $read_timeout;
-		$this->read_length = $read_length;
-
 		$this->setSocketOpen($uri);
 	}
 
@@ -250,13 +228,17 @@ class Socket
         int $size
     ):string|bool
 	{
-        if($this->isReadyToRead() === false){
+        if($this->isReadyToRead() !== true){
             return false;
         }
 
+		if($this->buffer->size() >= $size){
+			return $this->buffer->read($size);
+		}
+
         $fragment = fread(
             stream: $this->socket,
-            length: self::READ_LENGTH);
+            length: $size);
 
         if($fragment === false){
             throw NetworkException::failedToRead();
@@ -289,11 +271,9 @@ class Socket
             throw NetworkException::failedToRead();
         }
 
-        if(strlen($fragment) === 0){
-            return false;
+        if(strlen($fragment) > 0){
+			$this->buffer->append($fragment);
         }
-
-        $this->buffer->append($fragment);
 
         if(feof($this->socket) === false){
             return false;
@@ -311,6 +291,7 @@ class Socket
         }
 
 		$line = $this->buffer->readLine();
+
 		if($line !== null){
             return $line;
 		}

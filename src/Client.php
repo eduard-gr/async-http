@@ -16,9 +16,6 @@ use GuzzleHttp\Psr7\Response;
 class Client
 {
 
-    const CONTENT_LENGTH = 'Content-Length';
-    const TRANSFER_ENCODING = 'Transfer-Encoding';
-    const CONNECTION = 'Connection';
 	/**
 	 * @var resource
 	 */
@@ -30,10 +27,9 @@ class Client
     private State $state = State::CONNECTING;
 
 
-
-    private RequestInterface $request;
+    private RequestInterface|null $request;
     private string $version;
-    private int $status;
+    private int|null $status = null;
     private string $code;
 
     private array $headers = [];
@@ -86,6 +82,8 @@ class Client
 
     public function tick():void
     {
+		//error_log(json_encode($this->state));
+
         switch($this->state) {
             case State::WAIT_FOR_WRITE:
                 if($this->socket->isReadyToWrite()){
@@ -121,8 +119,9 @@ class Client
                     return;
                 }
 
-                [$key, $value] = explode(':', $line,2);
+				error_log($line);
 
+                [$key, $value] = explode(':', $line,2);
                 $this->headers[trim($key)] = trim($value);
             break;
             case State::READING_BODY:
@@ -194,17 +193,16 @@ class Client
         return $this->state === State::DONE;
     }
 
-    public function getResponse():ResponseInterface
-    {
+	public function getStatus(): int|null
+	{
+		return $this->status;
+	}
 
-//        error_log(json_encode([
-//            $this->status,
-//            $this->version,
-//            $this->code
-//        ]));
-//
-//        error_log(json_encode($this->headers));
-//        error_log(json_encode($this->body));
+    public function getResponse():ResponseInterface|null
+    {
+		if($this->isDone() === false){
+			return null;
+		}
 
         $response = new Response(
             status: $this->status,
@@ -224,10 +222,15 @@ class Client
         $this->socket = null;
         $this->buffer->reset();
         $this->state = State::CONNECTING;
+
+
+        $this->request = null;
+		$this->version = '';
+		$this->status = null;
+		$this->code = '';
         $this->headers = [];
         $this->body = [];
         $this->size = 0;
-        $this->status = 0;
     }
 
 	private function getStatusLine():array|false
