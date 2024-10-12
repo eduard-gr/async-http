@@ -84,7 +84,7 @@ class Client
     public function tick():void
     {
 		while($this->state !== State::DONE && $this->state !== State::CONNECTING) {
-
+			//error_log(json_encode($this->state));
 			if ($this->state === State::WAIT_FOR_WRITE) {
 				if ($this->socket->isReadyToWrite() !== true) {
 					return;
@@ -134,7 +134,14 @@ class Client
 
 			if ($this->state === State::READING_BODY) {
 				$header = new Header($this->headers);
+
 				$size = $header->getContentLength();
+
+				error_log(json_encode([
+					$header->getContentLength(),
+					$header->getTransferEncoding(),
+					$header->getConnection()
+				]));
 
 				if ($size !== null) {
 					$this->size = $size;
@@ -173,6 +180,11 @@ class Client
 					$this->size = hexdec($line);
 					$this->state = State::READING_BODY_CHUNKED_BODY;
 				}
+
+//				error_log(json_encode([
+//					$this->state,
+//					$this->size
+//				]));
 			}
 
 			if ($this->state === State::READING_BODY_CHUNKED_BODY) {
