@@ -83,107 +83,119 @@ class Client
 
     public function tick():void
     {
+		while($this->state !== State::DONE && $this->state !== State::CONNECTING) {
 
-        switch($this->state) {
-            case State::WAIT_FOR_WRITE:
-                if($this->socket->isReadyToWrite()){
-                    $this->state = State::READY_TO_WRITING;
-                }
-            break;
-            case State::READY_TO_WRITING:
-                $this->socket->send($this->getRequestPayload());
-                $this->state = State::WAIT_FOR_READ;
-            break;
-            case State::WAIT_FOR_READ:
-                if($this->socket->isReadyToRead()){
-                    $this->state = State::READING_STATUS_LINE;
-                }
-            break;
-            case State::READING_STATUS_LINE:
-                $status_line = $this->getStatusLine();
-                if($status_line === false){
-                    return;
-                }
+			if ($this->state === State::WAIT_FOR_WRITE) {
+				if ($this->socket->isReadyToWrite() !== true) {
+					return;
+				}
 
-                [$this->version, $this->status, $this->code] = $status_line;
-                $this->state = State::READING_HEADERS;
-            break;
-            case State::READING_HEADERS:
-                $line = $this->socket->readLine();
-                if($line === false){
-                    return;
-                }
+				$this->state = State::READY_TO_WRITING;
+			}
 
-                if(empty($line)){
-                    $this->state = State::READING_BODY;
-                    return;
-                }
+			if ($this->state === State::READY_TO_WRITING) {
+				$this->socket->send($this->getRequestPayload());
+				$this->state = State::WAIT_FOR_READ;
+			}
 
-                [$key, $value] = explode(':', $line,2);
-                $this->headers[trim($key)] = trim($value);
-            break;
-            case State::READING_BODY:
+			if ($this->state === State::WAIT_FOR_READ) {
+				if ($this->socket->isReadyToRead() !== true) {
+					return;
+				}
+				$this->state = State::READING_STATUS_LINE;
+			}
 
-                $header = new Header($this->headers);
-                $size = $header->getContentLength();
+			if ($this->state === State::READING_STATUS_LINE) {
+				$status_line = $this->getStatusLine();
+				if ($status_line === false) {
+					return;
+				}
 
-                if($size !== null){
-                    $this->size = $size;
-                    $this->state = State::READING_BODY_ENCODED_BY_SIZE;
-                }else if(strcasecmp($header->getTransferEncoding(), 'Chunked') == 0){
-                    $this->state = State::READING_BODY_CHUNKED_SIZE;
-                }else if(strcasecmp($header->getConnection(), 'Close') === 0){
-                    $this->state = State::READING_BODY_TO_END;
-                }else{
-                    $this->state = State::DONE;
-                }
-            break;
-            case State::READING_BODY_ENCODED_BY_SIZE:
-                $body = $this->socket->readSpecificSize(
-                    $this->size);
+				[$this->version, $this->status, $this->code] = $status_line;
+				$this->state = State::READING_HEADERS;
+			}
 
-                if($body === false){
-                    return;
-                }
+			if ($this->state === State::READING_HEADERS) {
+				while (true) {
+					$line = $this->socket->readLine();
+					if ($line === false) {
+						return;
+					}
 
-                $this->body[] = $body;
-                $this->state = State::DONE;
-            break;
-            case State::READING_BODY_CHUNKED_SIZE:
-                $line = $this->socket->readLine();
+					if (empty($line)) {
+						$this->state = State::READING_BODY;
+						break;
+					}
 
-                if($line === false){
-                    return;
-                }
+					[$key, $value] = explode(':', $line, 2);
+					$this->headers[trim($key)] = trim($value);
+				}
+			}
 
-                if(strlen($line) === 0){
-                    $this->state = State::DONE;
-                    return;
-                }
+			if ($this->state === State::READING_BODY) {
+				$header = new Header($this->headers);
+				$size = $header->getContentLength();
 
-                $this->size = hexdec($line);
-                $this->state = State::READING_BODY_CHUNKED_BODY;
-            break;
-            case State::READING_BODY_CHUNKED_BODY:
+				if ($size !== null) {
+					$this->size = $size;
+					$this->state = State::READING_BODY_ENCODED_BY_SIZE;
+				} else if (strcasecmp($header->getTransferEncoding(), 'Chunked') == 0) {
+					$this->state = State::READING_BODY_CHUNKED_SIZE;
+				} else if (strcasecmp($header->getConnection(), 'Close') === 0) {
+					$this->state = State::READING_BODY_TO_END;
+				} else {
+					$this->state = State::DONE;
+				}
+			}
 
-                $body = $this->socket->readSpecificSize(
-                    $this->size);
+			if ($this->state === State::READING_BODY_ENCODED_BY_SIZE) {
+				$body = $this->socket->readSpecificSize(
+					$this->size);
 
-                if($body === false){
-                    return;
-                }
+				if ($body === false) {
+					return;
+				}
 
-                $this->body[] = $body;
-                $this->state = State::READING_BODY_CHUNKED_SIZE;
-            break;
-            case State::READING_BODY_TO_END:
-                $body = $this->socket->readToEnd();
-                if($body === false){
-                    return;
-                }
-                $this->state = State::DONE;
-            break;
-        }
+				$this->body[] = $body;
+				$this->state = State::DONE;
+			}
+
+			if ($this->state === State::READING_BODY_CHUNKED_SIZE) {
+				$line = $this->socket->readLine();
+
+				if ($line === false) {
+					return;
+				}
+
+				if (strlen($line) === 0) {
+					$this->state = State::DONE;
+				} else {
+					$this->size = hexdec($line);
+					$this->state = State::READING_BODY_CHUNKED_BODY;
+				}
+			}
+
+			if ($this->state === State::READING_BODY_CHUNKED_BODY) {
+				$body = $this->socket->readSpecificSize(
+					$this->size);
+
+				if ($body === false) {
+					return;
+				}
+
+				$this->body[] = $body;
+				$this->state = State::READING_BODY_CHUNKED_SIZE;
+			}
+
+			if ($this->state === State::READING_BODY_TO_END) {
+				$body = $this->socket->readToEnd();
+				if ($body === false) {
+					return;
+				}
+
+				$this->state = State::DONE;
+			}
+		}
     }
 
     public function isDone():bool
