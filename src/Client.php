@@ -64,6 +64,7 @@ class Client
             return;
         }
 
+		$this->clear();
         $this->request = $request;
 
 		if($this->socket == null || $this->ip != $ip){
@@ -219,16 +220,18 @@ class Client
         $this->socket = null;
         $this->buffer->reset();
         $this->state = State::CONNECTING;
+		$this->clear();
+    }
 
-
-        $this->request = null;
+	public function clear():void{
+		$this->request = null;
 		$this->version = '';
 		$this->status = null;
 		$this->code = '';
-        $this->headers = [];
-        $this->body = [];
-        $this->size = 0;
-    }
+		$this->headers = [];
+		$this->body = [];
+		$this->size = 0;
+	}
 
 	private function getStatusLine():array|false
 	{
