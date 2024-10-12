@@ -28,13 +28,16 @@ class Client
 
 
     private RequestInterface|null $request;
+
     private string $version;
     private int|null $status = null;
     private string $code;
 
     private array $headers = [];
+
     private array $body = [];
-    private int $size;
+    private int $size = 0;
+
     public function __construct(
         BufferInterface $buffer = null
     ){
@@ -137,12 +140,6 @@ class Client
 
 				$size = $header->getContentLength();
 
-				error_log(json_encode([
-					$header->getContentLength(),
-					$header->getTransferEncoding(),
-					$header->getConnection()
-				]));
-
 				if ($size !== null) {
 					$this->size = $size;
 					$this->state = State::READING_BODY_ENCODED_BY_SIZE;
@@ -178,18 +175,17 @@ class Client
 					$this->state = State::DONE;
 				} else {
 					$this->size = hexdec($line);
-					$this->state = State::READING_BODY_CHUNKED_BODY;
+					$this->state = $this->size > 0
+						? State::READING_BODY_CHUNKED_BODY
+						: State::READING_BODY_CHUNKED_COMPLETION;
 				}
 
-//				error_log(json_encode([
-//					$this->state,
-//					$this->size
-//				]));
 			}
 
-			if ($this->state === State::READING_BODY_CHUNKED_BODY) {
+			if($this->state === State::READING_BODY_CHUNKED_BODY) {
+
 				$body = $this->socket->readSpecificSize(
-					$this->size);
+					$this->size + 2);
 
 				if ($body === false) {
 					return;
@@ -197,6 +193,16 @@ class Client
 
 				$this->body[] = $body;
 				$this->state = State::READING_BODY_CHUNKED_SIZE;
+			}
+
+			if($this->state === State::READING_BODY_CHUNKED_COMPLETION){
+				$body = $this->socket->readSpecificSize(2);
+
+				if ($body === false) {
+					return;
+				}
+
+				$this->state = State::DONE;
 			}
 
 			if ($this->state === State::READING_BODY_TO_END) {
