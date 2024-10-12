@@ -73,9 +73,9 @@ class Client
 		if($this->socket == null || $this->ip != $ip){
             $this->ip = $ip;
 			$this->socket = new Socket(
-				$request->getUri(),
-                $this->buffer,
-                $this->ip);
+				uri: $request->getUri(),
+                buffer: $this->buffer,
+                ip: $this->ip);
 
             $this->state = State::WAIT_FOR_WRITE;
             return;
