@@ -191,7 +191,7 @@ class Client
 					return;
 				}
 
-				$this->body[] = $body;
+				$this->body[] = substr($body,0, -2);
 				$this->state = State::READING_BODY_CHUNKED_SIZE;
 			}
 
