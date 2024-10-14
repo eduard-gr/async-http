@@ -226,6 +226,11 @@ class Client
 		return $this->status;
 	}
 
+	public function getState(): State
+	{
+		return $this->state;
+	}
+
     public function getResponse():ResponseInterface|null
     {
 		if($this->isDone() === false){
