@@ -28,11 +28,15 @@ class Socket
      */
     private string|null $ip;
 
-
 	/**
-	 * @var int How long in microsseconds select sleep
+	 * @var int How long in microsseconds select wait
 	 */
 	private int $select_usleep = 0;
+
+	/**
+	 * @var int How long in seconds connection timeout (read/write)
+	 */
+	private int $timeout = 120;
 
     public function __construct(
 		UriInterface $uri,
@@ -42,10 +46,12 @@ class Socket
 
 		//1/100 of seconds
 		int $select_usleep = 10000,
+		int $timeout = 120
 	){
         $this->ip = $ip;
         $this->buffer = $buffer;
 		$this->select_usleep = $select_usleep;
+		$this->timeout = $timeout;
 		$this->setSocketOpen($uri);
 	}
 
@@ -136,6 +142,7 @@ class Socket
 //		stream_set_read_buffer($socket, 1024);
 //		stream_set_write_buffer($socket, 1024);
 		stream_set_blocking($this->socket, false);
+		stream_set_timeout($this->socket, $this->timeout);
 	}
 
 	public function isReadyToWrite():bool{
