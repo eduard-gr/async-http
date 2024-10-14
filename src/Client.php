@@ -24,7 +24,7 @@ class Client
     private string|null $ip;
 
     private BufferInterface $buffer;
-    private State $state = State::CONNECTING;
+    private State $state = State::DONE;
 
 
     private RequestInterface|null $request;
@@ -63,7 +63,7 @@ class Client
         string|null $ip = null
 	):void
 	{
-        if(($this->state === State::CONNECTING || $this->state === State::DONE) === false){
+        if($this->state !== State::DONE){
             return;
         }
 
@@ -86,7 +86,7 @@ class Client
 
     public function tick():void
     {
-		while($this->state !== State::DONE && $this->state !== State::CONNECTING) {
+		while($this->state !== State::DONE) {
 
 			if ($this->state === State::WAIT_FOR_WRITE) {
 				if ($this->socket->isReadyToWrite() !== true) {
@@ -226,6 +226,11 @@ class Client
 		return $this->status;
 	}
 
+	public function getState(): State
+	{
+		return $this->state;
+	}
+
     public function getResponse():ResponseInterface|null
     {
 		if($this->isDone() === false){
@@ -249,7 +254,7 @@ class Client
     public function reset():void{
         $this->socket = null;
         $this->buffer->reset();
-        $this->state = State::CONNECTING;
+        $this->state = State::DONE;
 		$this->clear();
     }
 

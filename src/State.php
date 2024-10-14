@@ -4,7 +4,6 @@ namespace Eg\AsyncHttp;
 
 enum State:int
 {
-    case CONNECTING = 0;
     case WAIT_FOR_WRITE = 1;
     case READY_TO_WRITING = 2;
     case WAIT_FOR_READ = 3;
