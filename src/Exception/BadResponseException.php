@@ -37,6 +37,6 @@ class BadResponseException extends TransferException
 
 	public function __call($name, $arguments)
 	{
-		return call_user_func([$this->response, $name], $arguments);
+		return call_user_func_array([$this->response, $name], $arguments);
 	}
 }
