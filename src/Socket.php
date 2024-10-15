@@ -120,6 +120,7 @@ class Socket
             ],
 			'socket' => [
 				'connect_timeout' => 5,
+				'tcp_nodelay' => true,
 				'read_timeout' => [
 					'sec'  => $this->timeout,
 					'usec' => 0,
