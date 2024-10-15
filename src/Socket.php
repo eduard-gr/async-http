@@ -8,6 +8,7 @@ use Fiber;
 use Generator;
 use RuntimeException;
 use Psr\Http\Message\UriInterface;
+use Throwable;
 
 class Socket
 {
@@ -36,7 +37,7 @@ class Socket
 	/**
 	 * @var int How long in seconds connection timeout (read/write)
 	 */
-	private int $timeout = 120;
+	private int $timeout;
 
     public function __construct(
 		UriInterface $uri,
@@ -58,6 +59,10 @@ class Socket
 	public function __destruct()
 	{
 		if($this->socket){
+			stream_socket_shutdown(
+				stream: $this->socket,
+				mode: STREAM_SHUT_RDWR);
+
 			fclose($this->socket);
 			$this->socket = null;
 		}
@@ -67,7 +72,19 @@ class Socket
 		UriInterface $uri
 	):array
 	{
-        $options = [];
+		$options = [
+			'socket' => [
+				'connect_timeout' => 5,
+				'read_timeout' => [
+					'sec'  => $this->timeout,
+					'usec' => 0,
+				],
+				'write_timeout' => [
+					'sec'  => $this->timeout,
+					'usec' => 0,
+				]
+			]
+		];
 
         if(empty($this->ip) === false){
             $options['socket'] = [
@@ -98,8 +115,20 @@ class Socket
                 'verify_peer' => false,
                 'verify_depth' => false,
                 'allow_self_signed' => true,
-                'disable_compression' => false
-            ]
+                'disable_compression' => false,
+				'timeout' => 5
+            ],
+			'socket' => [
+				'connect_timeout' => 5,
+				'read_timeout' => [
+					'sec'  => $this->timeout,
+					'usec' => 0,
+				],
+				'write_timeout' => [
+					'sec'  => $this->timeout,
+					'usec' => 0,
+				]
+			]
         ];
 
         if(empty($this->ip) === false){
@@ -126,23 +155,23 @@ class Socket
 			'https' => $this->getSecureConnection($uri)
 		};
 
-		$this->socket = stream_socket_client(
-			address: $address,
-			error_code: $error_code,
-			error_message: $error_message,
-			timeout: null,
-			flags: STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT,
-			context: $context);
+		try{
+			$this->socket = stream_socket_client(
+				address: $address,
+				error_code: $error_code,
+				error_message: $error_message,
+				timeout: 5,
+				flags: STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT,
+				context: $context);
+		}catch(Throwable $e){
+			throw new NetworkException($e->getMessage(), $e->getCode());
+		}
 
 		if($error_code !== 0 ){
 			throw new NetworkException($error_message, $error_code);
 		}
 
-//		stream_set_chunk_size($socket, 1024);
-//		stream_set_read_buffer($socket, 1024);
-//		stream_set_write_buffer($socket, 1024);
 		stream_set_blocking($this->socket, false);
-		stream_set_timeout($this->socket, $this->timeout);
 	}
 
 	public function isReadyToWrite():bool{
@@ -323,5 +352,12 @@ class Socket
         }
 
         return $line;
+	}
+
+	public function __debugInfo(){
+		return [
+			'is_ready_to_read' => $this->is_ready_to_read,
+			'is_ready_to_write' => $this->is_ready_to_write,
+		];
 	}
 }

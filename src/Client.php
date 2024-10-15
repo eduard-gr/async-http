@@ -320,4 +320,21 @@ class Client
 		return implode("\r\n", $payload);
 	}
 
+	public function __debugInfo(){
+		return [
+			'socket' => $this->socket,
+			'ip' => $this->ip,
+
+			'state' => $this->state,
+
+			'version' => $this->version,
+			'status' => $this->status,
+			'code' => $this->code,
+
+			'headers' => $this->headers,
+
+			'size' => $this->size,
+		];
+	}
+
 }
