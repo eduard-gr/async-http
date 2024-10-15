@@ -275,7 +275,7 @@ class Client
             return false;
         }
 
-		if(preg_match('/^HTTP\/(\d\.\d)\s+(\d+)\s+([A-Za-z\s]+)$/', $line, $matches) == false){
+		if(preg_match('/^HTTP\/(\d\.\d)\s+(\d+)\s+(.+)$/', $line, $matches) == false){
 			throw ResponseException::startLine(
 				$line);
 		}
