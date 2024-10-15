@@ -37,7 +37,7 @@ class Socket
 	/**
 	 * @var int How long in seconds connection timeout (read/write)
 	 */
-	private int $timeout = 120;
+	private int $timeout;
 
     public function __construct(
 		UriInterface $uri,
@@ -352,5 +352,12 @@ class Socket
         }
 
         return $line;
+	}
+
+	public function __debugInfo(){
+		return [
+			'is_ready_to_read' => $this->is_ready_to_read,
+			'is_ready_to_write' => $this->is_ready_to_write,
+		];
 	}
 }
