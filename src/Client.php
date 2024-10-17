@@ -21,7 +21,14 @@ class Client
 	 */
 	private Socket|null $socket = null;
 
+	/**
+	 * @var string|null IP address from which the connection will be made
+	 */
 	private string|null $local;
+
+	/**
+	 * @var string|null IP address to which the connection will be made
+	 */
 	private string|null $remote;
 
     private BufferInterface $buffer;
@@ -41,8 +48,8 @@ class Client
 
     public function __construct(
         BufferInterface $buffer = null,
-		string|null $local,
-		string|null $remote
+		string|null $local = null,
+		string|null $remote = null
     ){
         $this->buffer = $buffer ?? new MemoryBuffer();
         $this->local = $local;
