@@ -115,6 +115,7 @@ class Socket
 	{
         $options = [
             'ssl' => [
+				'peer_name' => $uri->getHost(),
                 'crypto_method' => STREAM_CRYPTO_METHOD_TLS_CLIENT,
                 'capture_peer_cert' => false,
                 'capture_peer_chain' => false,
