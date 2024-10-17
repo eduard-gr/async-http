@@ -27,7 +27,12 @@ class Socket
     /**
      * @var string|null IP address from which the connection will be made
      */
-    private string|null $ip;
+    private string|null $local;
+
+	/**
+	 * @var string|null IP address to which the connection will be made
+	 */
+    private string|null $remote;
 
 	/**
 	 * @var int How long in microsseconds select wait
@@ -43,13 +48,16 @@ class Socket
 		UriInterface $uri,
         BufferInterface $buffer,
 
-        string|null $ip = null,
+        string|null $local = null,
+        string|null $remote = null,
 
 		//1/100 of seconds
 		int $select_usleep = 10000,
 		int $timeout = 120
 	){
-        $this->ip = $ip;
+        $this->local = $local;
+        $this->remote = $remote;
+
         $this->buffer = $buffer;
 		$this->select_usleep = $select_usleep;
 		$this->timeout = $timeout;
@@ -86,16 +94,16 @@ class Socket
 			]
 		];
 
-        if(empty($this->ip) === false){
+        if(empty($this->local) === false){
             $options['socket'] = [
                 'bindto' => sprintf('%s:0',
-                    $this->ip)
+                    $this->local)
             ];
         }
 
 		return [
 			sprintf('tcp://%s:%s',
-				$uri->getHost(),
+				$this->remote ?? $uri->getHost(),
 				$uri->getPort() ?? 80),
 			stream_context_create($options)
 		];
@@ -132,16 +140,16 @@ class Socket
 			]
         ];
 
-        if(empty($this->ip) === false){
+        if(empty($this->local) === false){
             $options['socket'] = [
                 'bindto' => sprintf('%s:0',
-                    $this->ip)
+                    $this->local)
             ];
         }
 
 		return [
 			sprintf('ssl://%s:%s',
-				$uri->getHost(),
+				$this->remote ?? $uri->getHost(),
 				$uri->getPort() ?? 443),
 			stream_context_create($options)
 		];

@@ -21,7 +21,8 @@ class Client
 	 */
 	private Socket|null $socket = null;
 
-    private string|null $ip;
+	private string|null $local;
+	private string|null $remote;
 
     private BufferInterface $buffer;
     private State $state = State::DONE;
@@ -39,9 +40,13 @@ class Client
     private int $size = 0;
 
     public function __construct(
-        BufferInterface $buffer = null
+        BufferInterface $buffer = null,
+		string|null $local,
+		string|null $remote
     ){
         $this->buffer = $buffer ?? new MemoryBuffer();
+        $this->local = $local;
+        $this->remote = $remote;
     }
 
     public function __destruct()
@@ -49,9 +54,9 @@ class Client
 		$this->socket = null;
 	}
 
-    public function getIP():string|null
+    public function getLocalIP():string|null
     {
-        return $this->ip;
+        return $this->local;
     }
 
 	/**
@@ -59,8 +64,7 @@ class Client
 	 * @throws \Throwable
 	 */
 	public function send(
-		RequestInterface $request,
-        string|null $ip = null
+		RequestInterface $request
 	):void
 	{
         if($this->state !== State::DONE){
@@ -70,12 +74,12 @@ class Client
 		$this->clear();
         $this->request = $request;
 
-		if($this->socket == null || $this->ip != $ip){
-            $this->ip = $ip;
+		if(empty($this->socket)){
 			$this->socket = new Socket(
 				uri: $request->getUri(),
                 buffer: $this->buffer,
-                ip: $this->ip);
+				local: $this->local,
+				remote: $this->remote);
 
             $this->state = State::WAIT_FOR_WRITE;
             return;
