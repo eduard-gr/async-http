@@ -236,6 +236,10 @@ class Socket
 	{
         $this->buffer->reset();
 
+        if(feof($this->socket)){
+            throw NetworkException::connectionResetByPeer();
+        }
+
 		if($this->isReadyToWrite() === false){
             return 0;
         }
@@ -296,15 +300,11 @@ class Socket
             stream: $this->socket,
             length: self::READ_LENGTH);
 
-        if($fragment === false){
-            throw NetworkException::failedToRead();
-        }
-
         if(strlen($fragment) > 0){
 			$this->buffer->append($fragment);
         }
 
-        if(feof($this->socket) === false){
+        if(feof($this->socket) !== true || $fragment !== false){
             return false;
         }
 
@@ -329,8 +329,8 @@ class Socket
             stream: $this->socket,
             length: $length);
 
-        if($fragment === false){
-            throw NetworkException::failedToRead();
+        if($fragment === false || feof($this->socket)){
+            throw NetworkException::connectionResetByPeer();
         }
 
         if(strlen($fragment) === 0){

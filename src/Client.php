@@ -334,8 +334,9 @@ class Client
 	public function __debugInfo(){
 		return [
 			'socket' => $this->socket,
+			'buffer' => $this->buffer,
 
-			'state' => $this->state,
+            'state' => $this->state,
 
 			'version' => $this->version,
 			'status' => $this->status,
