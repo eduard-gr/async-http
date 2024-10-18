@@ -48,4 +48,11 @@ class MemoryBuffer implements BufferInterface
         $this->buffer = substr($this->buffer, $size);
         return $data;
     }
+
+    public function __debugInfo(): array
+    {
+        return [
+            'buffer' => $this->buffer
+        ];
+    }
 }

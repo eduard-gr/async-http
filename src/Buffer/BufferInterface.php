@@ -9,4 +9,5 @@ interface BufferInterface
     public function append(string $fragment):void;
     public function readLine():string|null;
     public function read(int $size):string|null;
+    public function __debugInfo(): array;
 }

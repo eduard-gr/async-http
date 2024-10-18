@@ -370,6 +370,7 @@ class Socket
 			'is_ready_to_write' => $this->is_ready_to_write,
 			'local' => $this->local,
 			'remote' => $this->remote,
+            'feof' => feof($this->socket)
 		];
 	}
 }

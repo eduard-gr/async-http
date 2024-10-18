@@ -94,4 +94,18 @@ class FileBuffer implements BufferInterface
 
         return stream_get_line($this->reader, $size);
     }
+
+
+    public function __debugInfo(): array
+    {
+        $index = ftell($this->reader) ?? 0;
+        $buffer = fgets($this->reader);
+        if($buffer !== false){
+            fseek($this->reader, $index);
+        }
+
+        return [
+            'buffer' => $buffer
+        ];
+    }
 }
