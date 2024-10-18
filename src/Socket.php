@@ -82,15 +82,7 @@ class Socket
 	{
 		$options = [
 			'socket' => [
-				'connect_timeout' => 5,
-				'read_timeout' => [
-					'sec'  => $this->timeout,
-					'usec' => 0,
-				],
-				'write_timeout' => [
-					'sec'  => $this->timeout,
-					'usec' => 0,
-				]
+                'tcp_nodelay' => true
 			]
 		];
 
@@ -124,20 +116,10 @@ class Socket
                 'verify_peer' => false,
                 'verify_depth' => false,
                 'allow_self_signed' => true,
-                'disable_compression' => false,
-				'timeout' => 5
+                'disable_compression' => false
             ],
 			'socket' => [
-				'connect_timeout' => 5,
 				'tcp_nodelay' => true,
-				'read_timeout' => [
-					'sec'  => $this->timeout,
-					'usec' => 0,
-				],
-				'write_timeout' => [
-					'sec'  => $this->timeout,
-					'usec' => 0,
-				]
 			]
         ];
 
@@ -181,6 +163,7 @@ class Socket
 			throw new NetworkException($error_message, $error_code);
 		}
 
+        stream_set_timeout($this->socket, $this->timeout);
 		stream_set_blocking($this->socket, false);
 	}
 
@@ -365,12 +348,23 @@ class Socket
 	}
 
 	public function __debugInfo(){
-		return [
+        $debug_info = [
 			'is_ready_to_read' => $this->is_ready_to_read,
 			'is_ready_to_write' => $this->is_ready_to_write,
 			'local' => $this->local,
 			'remote' => $this->remote,
-            'feof' => feof($this->socket)
+            'feof' => null,
+            'stream' => null,
 		];
+
+        if(empty($this->socket)){
+            return $debug_info;
+        }
+
+        return array_merge($debug_info, [
+            'feof' => feof($this->socket),
+            'stream' => stream_get_meta_data(
+                $this->socket)
+        ]);
 	}
 }
