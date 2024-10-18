@@ -334,7 +334,6 @@ class Client
 	public function __debugInfo(){
 		return [
 			'socket' => $this->socket,
-			'ip' => $this->ip,
 
 			'state' => $this->state,
 

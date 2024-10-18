@@ -368,6 +368,8 @@ class Socket
 		return [
 			'is_ready_to_read' => $this->is_ready_to_read,
 			'is_ready_to_write' => $this->is_ready_to_write,
+			'local' => $this->local,
+			'remote' => $this->remote,
 		];
 	}
 }
