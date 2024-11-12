@@ -6,6 +6,7 @@ use Eg\AsyncHttp\Buffer\BufferInterface;
 use Eg\AsyncHttp\Buffer\FileBuffer;
 use Eg\AsyncHttp\Buffer\MemoryBuffer;
 use Eg\AsyncHttp\Exception\ClientException;
+use Eg\AsyncHttp\Exception\NetworkException;
 use Eg\AsyncHttp\Exception\ResponseException;
 use Eg\AsyncHttp\Exception\ServerException;
 use Generator;
@@ -34,6 +35,10 @@ class Client
     private BufferInterface $buffer;
     private State $state = State::DONE;
 
+	private int $timeout;
+
+	private int $connect_timeout;
+	private int $read_timeout;
 
     private RequestInterface|null $request;
 
@@ -49,22 +54,23 @@ class Client
     public function __construct(
         BufferInterface $buffer = null,
 		string|null $local = null,
-		string|null $remote = null
+		string|null $remote = null,
+
+		int $connect_timeout = 20,
+		int $read_timeout = 120,
     ){
         $this->buffer = $buffer ?? new MemoryBuffer();
         $this->local = $local;
         $this->remote = $remote;
+
+		$this->connect_timeout = $connect_timeout;
+		$this->read_timeout = $read_timeout;
     }
 
     public function __destruct()
 	{
 		$this->socket = null;
 	}
-
-    public function getLocalIP():string|null
-    {
-        return $this->local;
-    }
 
 	/**
 	 * @param RequestInterface $request
@@ -89,6 +95,7 @@ class Client
 				remote: $this->remote);
 
             $this->state = State::WAIT_FOR_WRITE;
+			$this->timeout = time() + $this->connect_timeout;
             return;
 		}
 
@@ -101,6 +108,11 @@ class Client
 
 			if ($this->state === State::WAIT_FOR_WRITE) {
 				if ($this->socket->isReadyToWrite() !== true) {
+
+					if(time() > $this->timeout){
+						throw NetworkException::connectionTimeout();
+					}
+
 					return;
 				}
 
@@ -108,31 +120,49 @@ class Client
 			}
 
 			if ($this->state === State::READY_TO_WRITING) {
+
 				$this->socket->send($this->getRequestPayload());
 				$this->state = State::WAIT_FOR_READ;
+				$this->timeout = time() + $this->connect_timeout;
 			}
+
 
 			if ($this->state === State::WAIT_FOR_READ) {
 				if ($this->socket->isReadyToRead() !== true) {
+					if(time() > $this->timeout){
+						throw NetworkException::connectionTimeout();
+					}
+
 					return;
 				}
+
 				$this->state = State::READING_STATUS_LINE;
+				$this->timeout = time() + $this->read_timeout;
 			}
 
 			if ($this->state === State::READING_STATUS_LINE) {
 				$status_line = $this->getStatusLine();
+
 				if ($status_line === false) {
+					if(time() > $this->timeout){
+						throw NetworkException::readTimeout();
+					}
 					return;
 				}
 
 				[$this->version, $this->status, $this->code] = $status_line;
 				$this->state = State::READING_HEADERS;
+				$this->timeout = time() + $this->read_timeout;
 			}
 
 			if ($this->state === State::READING_HEADERS) {
 				while (true) {
 					$line = $this->socket->readLine();
 					if ($line === false) {
+						if(time() > $this->timeout){
+							throw NetworkException::readTimeout();
+						}
+
 						return;
 					}
 
@@ -143,6 +173,7 @@ class Client
 
 					[$key, $value] = explode(':', $line, 2);
 					$this->headers[trim($key)] = trim($value);
+					$this->timeout = time() + $this->read_timeout;
 				}
 			}
 
@@ -161,6 +192,8 @@ class Client
 				} else {
 					$this->state = State::DONE;
 				}
+
+				$this->timeout = time() + $this->read_timeout;
 			}
 
 			if ($this->state === State::READING_BODY_ENCODED_BY_SIZE) {
@@ -168,6 +201,10 @@ class Client
 					$this->size);
 
 				if ($body === false) {
+					if(time() > $this->timeout){
+						throw NetworkException::readTimeout();
+					}
+
 					return;
 				}
 
@@ -179,6 +216,10 @@ class Client
 				$line = $this->socket->readLine();
 
 				if ($line === false) {
+					if(time() > $this->timeout){
+						throw NetworkException::readTimeout();
+					}
+
 					return;
 				}
 
@@ -189,8 +230,9 @@ class Client
 					$this->state = $this->size > 0
 						? State::READING_BODY_CHUNKED_BODY
 						: State::READING_BODY_CHUNKED_COMPLETION;
-				}
 
+					$this->timeout = time() + $this->read_timeout;
+				}
 			}
 
 			if($this->state === State::READING_BODY_CHUNKED_BODY) {
@@ -199,17 +241,26 @@ class Client
 					$this->size + 2);
 
 				if ($body === false) {
+					if(time() > $this->timeout){
+						throw NetworkException::readTimeout();
+					}
+
 					return;
 				}
 
 				$this->body[] = substr($body,0, -2);
 				$this->state = State::READING_BODY_CHUNKED_SIZE;
+				$this->timeout = time() + $this->read_timeout;
 			}
 
 			if($this->state === State::READING_BODY_CHUNKED_COMPLETION){
 				$body = $this->socket->readSpecificSize(2);
 
 				if ($body === false) {
+					if(time() > $this->timeout){
+						throw NetworkException::readTimeout();
+					}
+
 					return;
 				}
 
@@ -219,6 +270,10 @@ class Client
 			if ($this->state === State::READING_BODY_TO_END) {
 				$body = $this->socket->readToEnd();
 				if ($body === false) {
+					if(time() > $this->timeout){
+						throw NetworkException::readTimeout();
+					}
+
 					return;
 				}
 

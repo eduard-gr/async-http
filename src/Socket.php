@@ -304,7 +304,7 @@ class Socket
 			$this->buffer->append($fragment);
         }
 
-        if(feof($this->socket) !== true || $fragment !== false){
+        if($fragment !== false || feof($this->socket) === false){
             return false;
         }
 
@@ -329,7 +329,7 @@ class Socket
             stream: $this->socket,
             length: $length);
 
-        if($fragment === false || feof($this->socket)){
+        if($fragment === false || feof($this->socket) === true){
             throw NetworkException::connectionResetByPeer();
         }
 

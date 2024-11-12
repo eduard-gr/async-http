@@ -14,6 +14,16 @@ class NetworkException extends TransferException
 		return new self('read data timed out');
 	}
 
+	public static function writeTimeout():self
+    {
+		return new self('write data timed out');
+	}
+
+	public static function connectionTimeout():self
+    {
+		return new self('connection timed out');
+	}
+
 	public static function socketSelectTimeout():self
     {
 		return new self('socket select timeout');

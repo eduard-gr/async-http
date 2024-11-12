@@ -105,6 +105,9 @@ class FileBuffer implements BufferInterface
         }
 
         return [
+			'size' => $this->size,
+			'ftell' => $index,
+			'name' => $this->name,
             'buffer' => $buffer
         ];
     }
